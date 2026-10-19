@@ -20,4 +20,6 @@
     <string name="cant_open">Impossible d\'ouvrir %1$s</string>
     <string name="date_format">EEEE d MMMM</string>
     <string name="dream_name">Horloge</string>
+    <string name="other_apps">Autres applications</string>
+    <string name="back_to_home">Accueil</string>
 </resources>

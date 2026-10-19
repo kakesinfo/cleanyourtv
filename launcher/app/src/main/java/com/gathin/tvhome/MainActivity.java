@@ -93,6 +93,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private TextView greeting;
     private View btnInputs;
     private TextView btnWifi;
+    private TextView btnOtherApps;
     private TextView shamsiDate;
     private boolean shamsi;
     private String vpnApp;
@@ -108,6 +109,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private static int lastFocused = 0;
     /** App of the last focused tile, so focus follows it when the app list changes. */
     private static String lastFocusedKey;
+    private static int lastDockFocused = 0;
     private float density;
     /** Module cards (res/values/config.xml, module_cards): discovered on resume, shown only after the owner's Show. */
     private boolean moduleCards;
@@ -203,6 +205,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroName = findViewById(R.id.heroName);
         greeting = findViewById(R.id.greeting);
         btnWifi = findViewById(R.id.btnWifi);
+        btnOtherApps = findViewById(R.id.btnOtherApps);
         shamsiDate = findViewById(R.id.shamsiDate);
         shamsi = cfg.shamsiDate;
         if (shamsi) {
@@ -292,6 +295,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             showModuleCards();
             return true;
         });
+        btnOtherApps.setOnClickListener(v -> switchTab(!adapter.isShowingOtherApps()));
+        btnOtherApps.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+                    || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                if (adapter.isShowingOtherApps()) {
+                    int count = adapter.getItemCount();
+                    focusTile(count > 0 ? count - 1 : 0);
+                } else {
+                    int dc = adapter.dockCount();
+                    focusTile(dc > 0 ? Math.min(lastDockFocused, dc - 1) : 0);
+                }
+                return true;
+            }
+            return false;
+        });
 
         // Keep focus on the top bar at its ends and at the top: Android's focus finder would otherwise
         // jump to a tile far below when there is nothing in that direction.
@@ -300,8 +322,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
-                int dc = adapter.dockCount();
-                focusTile(dc > 0 ? Math.min(lastFocused, dc - 1) : 0);
+                if (adapter.isShowingOtherApps()) {
+                    focusTile(Math.min(lastFocused % COLUMNS, Math.max(0, adapter.getItemCount() - 1)));
+                } else {
+                    int dc = adapter.dockCount();
+                    if (dc > 0) focusTile(Math.min(lastDockFocused, dc - 1));
+                    else if (btnOtherApps.getVisibility() == View.VISIBLE) btnOtherApps.requestFocus();
+                }
                 return true;
             }
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
@@ -338,19 +365,49 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
     }
 
+    private void switchTab(boolean showOther) {
+        if (adapter.isShowingOtherApps() == showOther) return;
+        hideGlass();
+        hideHero();
+        glassScrollShift = 0f;
+        adapter.setShowingOtherApps(showOther);
+        updateOtherAppsButton();
+        updateGridPaddingTop();
+        grid.invalidateItemDecorations();
+        grid.scrollToPosition(0);
+        if (!reducedMotion) grid.scheduleLayoutAnimation();
+        final int target = showOther ? 0 : Math.min(lastDockFocused, Math.max(0, adapter.dockCount() - 1));
+        lastFocused = target;
+        lastFocusedKey = adapter.keyAt(target);
+        grid.post(() -> focusTile(target));
+    }
+
+    private void updateOtherAppsButton() {
+        if (btnOtherApps == null) return;
+        boolean hasOther = adapter.otherAppsCount() > 0;
+        btnOtherApps.setVisibility(hasOther ? View.VISIBLE : View.GONE);
+        btnOtherApps.setText(adapter.isShowingOtherApps()
+                ? "↑  " + getString(R.string.back_to_home)
+                : getString(R.string.other_apps) + "  ›");
+    }
+
     private void updateGridPaddingTop() {
         int h = grid.getHeight();
         if (h <= 0) return;
-        // Item height follows the tile size, which follows the column count (AppAdapter.tileWidthPx).
-        int inner = grid.getWidth() - grid.getPaddingLeft() - grid.getPaddingRight();
-        int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density)), density);
-        int gridRows = itemH * rowsBelowDock;
         int want;
-        if (adapter.dockCount() > 0) {
-            int dockRow = itemH + (int) ((6 + 12) * density);   // item height plus DockDecoration offsets
-            want = Math.max(0, h - dockRow - gridRows - (int) (30 * density));
+        if (adapter.isShowingOtherApps()) {
+            want = (int) (18 * density);
         } else {
-            want = Math.max(0, h - gridRows);
+            // Item height follows the tile size, which follows the column count (AppAdapter.tileWidthPx).
+            int inner = grid.getWidth() - grid.getPaddingLeft() - grid.getPaddingRight();
+            int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density)), density);
+            int gridRows = itemH * rowsBelowDock;
+            if (adapter.dockCount() > 0) {
+                int dockRow = itemH + (int) ((6 + 12) * density);   // item height plus DockDecoration offsets
+                want = Math.max(0, h - dockRow - gridRows - (int) (46 * density));
+            } else {
+                want = Math.max(0, h - gridRows);
+            }
         }
         if (grid.getPaddingTop() != want) {
             grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
@@ -392,8 +449,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
+        adapter.setShowingOtherApps(false);
+        updateOtherAppsButton();
+        updateGridPaddingTop();
+        grid.invalidateItemDecorations();
         grid.scrollToPosition(0);
         lastFocused = 0;
+        lastDockFocused = 0;
         lastFocusedKey = adapter.dockCount() > 0 ? adapter.keyAt(0) : null;
     }
 
@@ -457,6 +519,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         final List<Cards.Card> none = Collections.emptyList();
         cards = moduleCards ? CardFeature.run(() -> Cards.discover(this, hiddenApps, Cards.load(Cards.storeFile(this))), none) : none;
         adapter.reload(cards.isEmpty() ? none : CardFeature.run(() -> Cards.shown(cards), none));
+        updateOtherAppsButton();
         updateGridPaddingTop();
         grid.invalidateItemDecorations();
         lastFocusedKey = returnKey;
@@ -471,8 +534,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         final String returnKey = lastFocusedKey;
         final int returnSlot = lastFocused;
         grid.post(() -> {
-            if (adapter.dockCount() == 0 && returnKey == null) {
-                btnWifi.requestFocus();
+            if (adapter.getItemCount() == 0 && returnKey == null) {
+                if (btnOtherApps != null && btnOtherApps.getVisibility() == View.VISIBLE) btnOtherApps.requestFocus();
+                else btnWifi.requestFocus();
                 tilesReady = true;
                 showCardPrompt();
                 return;
@@ -514,6 +578,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public void onBackPressed() {
+        if (adapter != null && adapter.isShowingOtherApps()) {
+            switchTab(false);
+        }
         // Home screen: Back goes nowhere.
     }
 
@@ -523,6 +590,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     public void onTileFocused(int position, View card) {
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
+        if (!adapter.isShowingOtherApps() && position < adapter.dockCount()) {
+            lastDockFocused = position;
+        }
         // Tile rect in root coordinates, using layout positions (ignores the scale animation).
         Rect r = new Rect(0, 0, card.getWidth(), card.getHeight());
         root.offsetDescendantRectToMyCoords(card, r);
@@ -676,9 +746,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return position == 0;
             if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return position == dockCount - 1;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return false;          // dock row: let focus move to the top bar
-            if (count <= dockCount) return true;                            // no grid rows below the dock
-            target = Math.min(dockCount + position, count - 1);
-            focusTile(target);
+            if (btnOtherApps != null && btnOtherApps.getVisibility() == View.VISIBLE) {
+                btnOtherApps.requestFocus();
+                return true;
+            }
             return true;
         }
         int gridPos = position - dockCount;
@@ -699,7 +770,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             int gridCount = count - dockCount;
             int lastRowStart = dockCount + ((gridCount - 1) / COLUMNS) * COLUMNS;
-            if (position >= lastRowStart) return true;                      // already on the last row: stay put
+            if (position >= lastRowStart) {
+                if (btnOtherApps != null && btnOtherApps.getVisibility() == View.VISIBLE) {
+                    btnOtherApps.requestFocus();
+                }
+                return true;
+            }
             target = Math.min(position + COLUMNS, count - 1);
         }
         focusTile(target);
@@ -708,7 +784,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private void focusTile(int position) {
         if (adapter.getItemCount() == 0) {
-            btnWifi.requestFocus();
+            if (btnOtherApps != null && btnOtherApps.getVisibility() == View.VISIBLE) btnOtherApps.requestFocus();
+            else btnWifi.requestFocus();
             return;
         }
         final int pos = Math.max(0, Math.min(position, adapter.getItemCount() - 1));

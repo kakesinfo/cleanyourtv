@@ -549,13 +549,14 @@ public class CardsTest {
 
     @Test
     public void dockSlotMatchesLabelsPackagesAndAliases() {
-        List<String> dock = Arrays.asList("FreeTV", "Jellyfin", "Plezy", "Spotify");
+        List<String> dock = Arrays.asList("FreeTV", "Jellyfin", "Plezy", "Spotify", "YouTube");
         assertEquals(0, AppAdapter.dockSlot("com.freetv.app", "FreeTV", "FreeTV", dock));
         assertEquals(0, AppAdapter.dockSlot("net.oqee.androidtv", "OQEE by Free", "OQEE by Free", dock));
         assertEquals(0, AppAdapter.dockSlot("fr.freebox.oqee", "OQEE", "OQEE", dock));
         assertEquals(1, AppAdapter.dockSlot("org.jellyfin.androidtv", "Jellyfin", "Jellyfin", dock));
         assertEquals(2, AppAdapter.dockSlot("com.edde746.plezy", "Plezy", "Plezy", dock));
         assertEquals(3, AppAdapter.dockSlot("com.spotify.tv.android", "Spotify", "Spotify", dock));
+        assertEquals(4, AppAdapter.dockSlot("com.google.android.youtube.tv", "YouTube", "YouTube", dock));
         assertEquals(-1, AppAdapter.dockSlot("com.netflix.ninja", "Netflix", "Netflix", dock));
     }
 

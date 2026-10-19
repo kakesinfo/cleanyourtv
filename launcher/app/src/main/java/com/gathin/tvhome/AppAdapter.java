@@ -40,8 +40,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * App tiles. The first {@link #dockCount()} positions are the pinned dock (favourites, fixed order),
- * then the module cards the owner chose to show (by label), the rest is alphabetical.
+ * App tiles. Displayed either in the Home tab (pinned dock apps only) or the "Other apps" tab
+ * (all other installed apps in alphabetical order).
  */
 public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
 
@@ -155,6 +155,12 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             case "spotify":
                 return foldedLabel.startsWith("spotify") || foldedAppLabel.startsWith("spotify")
                         || pkgLower.startsWith("com.spotify.");
+            case "youtube":
+                return "youtubetv".equals(foldedLabel) || "youtubetv".equals(foldedAppLabel)
+                        || pkgLower.equals("com.google.android.youtube.tv")
+                        || pkgLower.equals("com.google.android.youtube.tvmusic")
+                        || pkgLower.startsWith("com.liskovsoft.smarttubetv")
+                        || pkgLower.startsWith("com.teamsmart.videomanager.tv");
             default:
                 return false;
         }
@@ -170,7 +176,10 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
     private final boolean showHomeSettings;
     /** Calmer motion for weak GPUs (config.xml, reduced_motion): no overshoot, shorter fades. */
     private final boolean reducedMotion;
+    private final List<Entry> dockEntries = new ArrayList<>();
+    private final List<Entry> otherEntries = new ArrayList<>();
     private final List<Entry> items = new ArrayList<>();
+    private boolean showingOtherApps = false;
     private int pinnedDockCount = 0;
 
     AppAdapter(Context ctx, TileListener listener, int dockSize, Config cfg) {
@@ -186,9 +195,25 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         setHasStableIds(true);
     }
 
-    /** Number of tiles currently pinned in the dock row on the home screen (0 to dockSize). */
+    /** Number of tiles currently pinned in the dock row on the home screen (0 to dockSize, or 0 in the other apps tab). */
     int dockCount() {
-        return pinnedDockCount;
+        return showingOtherApps ? 0 : pinnedDockCount;
+    }
+
+    int otherAppsCount() {
+        return otherEntries.size();
+    }
+
+    boolean isShowingOtherApps() {
+        return showingOtherApps;
+    }
+
+    void setShowingOtherApps(boolean showOther) {
+        if (this.showingOtherApps == showOther) return;
+        this.showingOtherApps = showOther;
+        items.clear();
+        items.addAll(showingOtherApps ? otherEntries : dockEntries);
+        notifyDataSetChanged();
     }
 
     /**
@@ -271,8 +296,17 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             }
         }
         pinnedDockCount = pinned;
+        dockEntries.clear();
+        otherEntries.clear();
+        for (int i = 0; i < fresh.size(); i++) {
+            if (i < pinned) dockEntries.add(fresh.get(i));
+            else otherEntries.add(fresh.get(i));
+        }
+        if (showingOtherApps && otherEntries.isEmpty() && !dockEntries.isEmpty()) {
+            showingOtherApps = false;
+        }
         items.clear();
-        items.addAll(fresh);
+        items.addAll(showingOtherApps ? otherEntries : dockEntries);
         notifyDataSetChanged();
     }
 
@@ -316,8 +350,9 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
     @Override
     public void onBindViewHolder(@NonNull Holder h, int position) {
         Entry e = items.get(position);
-        boolean inDock = position < pinnedDockCount;
-        boolean spansRest = inDock && pinnedDockCount < dockSize && position == pinnedDockCount - 1;
+        int dc = dockCount();
+        boolean inDock = position < dc;
+        boolean spansRest = inDock && dc < dockSize && position == dc - 1;
         ViewGroup.LayoutParams itemLp = h.itemView.getLayoutParams();
         int wantWidth = spansRest && h.cellWidth > 0 ? h.cellWidth : ViewGroup.LayoutParams.MATCH_PARENT;
         if (itemLp != null && itemLp.width != wantWidth) {

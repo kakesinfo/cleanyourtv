@@ -1,7 +1,7 @@
 {
-  "dock_apps": ["FreeTV", "Jellyfin", "Plezy", "Spotify"],
+  "dock_apps": ["FreeTV", "Jellyfin", "Plezy", "Spotify", "YouTube"],
   "hidden_apps": ["com.mediatek.wwtv.tvcenter", "com.mitv.gallery"],
-  "columns": 4,
+  "columns": 5,
   "rows_below_dock": 0,
   "reduced_motion": false,
   "background_color": "#000000",
