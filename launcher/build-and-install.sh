@@ -3,8 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 : "${TV_HOST:?set TV_HOST to the TV IP address, e.g. TV_HOST=192.168.1.50 $0}"
-# macOS: java_home or Homebrew; Linux: the java on PATH.
-export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17 2>/dev/null || { [ -d /opt/homebrew/opt/openjdk@17 ] && echo /opt/homebrew/opt/openjdk@17; } || java -XshowSettings:properties -version 2>&1 | awk '/java.home/ {print $3}')}"
+# macOS: java_home or Homebrew; Linux: JDK 17/21 in /usr/lib/jvm, or the java on PATH.
+export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17 2>/dev/null || { [ -d /opt/homebrew/opt/openjdk@17 ] && echo /opt/homebrew/opt/openjdk@17; } || { for d in /usr/lib/jvm/java-17-openjdk* /usr/lib/jvm/java-1.17.0-openjdk* /usr/lib/jvm/java-21-openjdk* /usr/lib/jvm/java-1.21.0-openjdk*; do [ -d "$d" ] && echo "$d" && break; done; } || java -XshowSettings:properties -version 2>&1 | awk '/java.home/ {print $3}')}"
 # Android Studio's default SDK location on macOS, then on Linux, then Homebrew's command-line tools.
 export ANDROID_HOME="${ANDROID_HOME:-$(for d in ~/Library/Android/sdk ~/Android/Sdk; do [ -d "$d" ] && echo "$d" && break; done)}"
 export ANDROID_HOME="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}"

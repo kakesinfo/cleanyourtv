@@ -12,14 +12,16 @@ import androidx.recyclerview.widget.RecyclerView;
 /** Draws the tvOS style lighter band behind the first (dock) row and adds a gap below it. */
 public class DockDecoration extends RecyclerView.ItemDecoration {
 
-    private final int dockSize;
+    private final AppAdapter adapter;
+    private final int maxDockSize;
     private final float density;
     private final Paint band = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
 
-    DockDecoration(int dockSize, float density) {
-        this.dockSize = dockSize;
+    DockDecoration(AppAdapter adapter, int maxDockSize, float density) {
+        this.adapter = adapter;
+        this.maxDockSize = maxDockSize;
         this.density = density;
         band.setColor(0xFF141416);
         edge.setStyle(Paint.Style.STROKE);
@@ -27,10 +29,15 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         edge.setColor(0x1FFFFFFF);
     }
 
+    private int activeDockSize() {
+        return adapter != null ? adapter.dockCount() : maxDockSize;
+    }
+
     @Override
     public void getItemOffsets(@NonNull Rect outRect, @NonNull View view, @NonNull RecyclerView parent,
                                @NonNull RecyclerView.State state) {
         int pos = parent.getChildAdapterPosition(view);
+        int dockSize = activeDockSize();
         if (pos >= 0 && pos < dockSize) {
             outRect.top = (int) (6 * density);
             outRect.bottom = (int) (12 * density);
@@ -39,6 +46,8 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
 
     @Override
     public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
+        int dockSize = activeDockSize();
+        if (dockSize <= 0) return;
         boolean any = false;
         for (int i = 0; i < parent.getChildCount(); i++) {
             View child = parent.getChildAt(i);

@@ -31,16 +31,16 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * App tiles. The first {@link MainActivity#COLUMNS} positions are the pinned dock (favourites, fixed order),
+ * App tiles. The first {@link #dockCount()} positions are the pinned dock (favourites, fixed order),
  * then the module cards the owner chose to show (by label), the rest is alphabetical.
  */
 public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
@@ -65,12 +65,16 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         final String name;
         /** Ambient glow colour; 0 until sampled from the banner, or the card's accent from the start. */
         int ambient;
+        /** Index in dock_apps, or -1 when not a dock app. */
+        final int dockSlot;
+        final String launchCategory;
 
-        Entry(String label, ComponentName component, Drawable banner, Drawable icon) {
-            this(APP, label, component, banner, icon, null, 0);
+        Entry(String label, ComponentName component, Drawable banner, Drawable icon, int dockSlot, String launchCategory) {
+            this(APP, label, component, banner, icon, null, 0, dockSlot, launchCategory);
         }
 
-        Entry(int kind, String label, ComponentName component, Drawable banner, Drawable icon, String caption, int accent) {
+        Entry(int kind, String label, ComponentName component, Drawable banner, Drawable icon, String caption,
+              int accent, int dockSlot, String launchCategory) {
             this.kind = kind;
             this.label = label;
             this.component = component;
@@ -79,6 +83,8 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             this.icon = icon;
             this.name = caption == null ? label : label + " \u00B7 " + caption;
             this.ambient = accent;
+            this.dockSlot = dockSlot;
+            this.launchCategory = launchCategory;
         }
     }
 
@@ -107,6 +113,53 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         return tileHeightPx + Math.round(45 * density);
     }
 
+    /**
+     * Index of the first dock_apps entry that matches this app (by package name, folded label, or known
+     * alias), or -1 when the app is not in dock_apps.
+     */
+    static int dockSlot(String pkg, String label, String appLabel, List<String> favourites) {
+        if (favourites == null) return -1;
+        for (int i = 0; i < favourites.size(); i++) {
+            if (matchesDockEntry(favourites.get(i), pkg, label, appLabel)) return i;
+        }
+        return -1;
+    }
+
+    static boolean matchesDockEntry(String spec, String pkg, String label, String appLabel) {
+        if (spec == null) return false;
+        String trimmed = spec.trim();
+        if (trimmed.isEmpty()) return false;
+        if (pkg != null && trimmed.equalsIgnoreCase(pkg)) return true;
+        String foldedSpec = Cards.fold(trimmed);
+        if (foldedSpec.isEmpty()) return false;
+        String foldedLabel = Cards.fold(label);
+        String foldedAppLabel = Cards.fold(appLabel);
+        if (foldedSpec.equals(foldedLabel) || foldedSpec.equals(foldedAppLabel)) return true;
+        String pkgLower = pkg != null ? pkg.toLowerCase(Locale.ROOT) : "";
+        switch (foldedSpec) {
+            case "freetv":
+                return "oqeebyfree".equals(foldedLabel) || "oqeebyfree".equals(foldedAppLabel)
+                        || "oqee".equals(foldedLabel) || "oqee".equals(foldedAppLabel)
+                        || "freeboxtv".equals(foldedLabel) || "freeboxtv".equals(foldedAppLabel)
+                        || pkgLower.startsWith("net.oqee.")
+                        || pkgLower.startsWith("fr.freebox.oqee")
+                        || pkgLower.startsWith("com.freetv.")
+                        || pkgLower.equals("tv.free.android");
+            case "jellyfin":
+                return foldedLabel.startsWith("jellyfin") || foldedAppLabel.startsWith("jellyfin")
+                        || pkgLower.startsWith("org.jellyfin.");
+            case "plezy":
+                return pkgLower.equals("com.edde746.plezy")
+                        || pkgLower.endsWith(".plezy")
+                        || pkgLower.contains(".plezy.");
+            case "spotify":
+                return foldedLabel.startsWith("spotify") || foldedAppLabel.startsWith("spotify")
+                        || pkgLower.startsWith("com.spotify.");
+            default:
+                return false;
+        }
+    }
+
     private final Context ctx;
     private final TileListener listener;
     private final int dockSize;
@@ -118,6 +171,7 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
     /** Calmer motion for weak GPUs (config.xml, reduced_motion): no overshoot, shorter fades. */
     private final boolean reducedMotion;
     private final List<Entry> items = new ArrayList<>();
+    private int pinnedDockCount = 0;
 
     AppAdapter(Context ctx, TileListener listener, int dockSize, Config cfg) {
         this.ctx = ctx;
@@ -132,6 +186,11 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         setHasStableIds(true);
     }
 
+    /** Number of tiles currently pinned in the dock row on the home screen (0 to dockSize). */
+    int dockCount() {
+        return pinnedDockCount;
+    }
+
     /**
      * Rebuilds the tiles. A shown module card stands in for every tile of its package (same component,
      * so focus follows it); hidden_apps wins over a card, and a card's package in dock_apps takes that slot.
@@ -143,29 +202,53 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         Map<String, Cards.Card> cardByPkg = new HashMap<>();
         for (Cards.Card c : cards) cardByPkg.put(c.pkg, c);
         List<Entry> fresh = new ArrayList<>();
+        Set<String> seenPkgs = new HashSet<>();
         for (ResolveInfo ri : found) {
             if (ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(ctx.getPackageName()) || hidden.contains(pkg)) continue;
+            seenPkgs.add(pkg);
             ComponentName component = new ComponentName(pkg, ri.activityInfo.name);
             Cards.Card card = cardByPkg.get(pkg);
             if (card != null && !card.component.equals(component)) continue;   // the card stands in for this tile
             Drawable banner = loadBanner(pm, ri);
             Drawable icon = ri.loadIcon(pm);
+            String actLabel = Cards.cleanLabel(String.valueOf(ri.loadLabel(pm)), pkg);
+            String appLabel = Cards.cleanLabel(String.valueOf(ri.activityInfo.applicationInfo.loadLabel(pm)), pkg);
+            int slot = dockSlot(pkg, card != null ? card.label : actLabel, appLabel, favourites);
             if (card != null) {
-                fresh.add(new Entry(Entry.CARD, card.label, component, banner, icon, card.caption, card.accent));
+                fresh.add(new Entry(Entry.CARD, card.label, component, banner, icon, card.caption, card.accent,
+                        slot, Intent.CATEGORY_LEANBACK_LAUNCHER));
             } else {
                 // Same cleaner as the card prompt: an app label with a bidi override or line separator must not
                 // redraw the tile name as something else (#117).
-                fresh.add(new Entry(Cards.cleanLabel(String.valueOf(ri.loadLabel(pm)), pkg), component, banner, icon));
+                fresh.add(new Entry(actLabel, component, banner, icon, slot, Intent.CATEGORY_LEANBACK_LAUNCHER));
+            }
+        }
+        // Fallback for dock apps that only declare a standard LAUNCHER activity instead of LEANBACK_LAUNCHER.
+        if (!favourites.isEmpty()) {
+            Intent stdProbe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            for (ResolveInfo ri : pm.queryIntentActivities(stdProbe, 0)) {
+                if (ri.activityInfo == null) continue;
+                String pkg = ri.activityInfo.packageName;
+                if (seenPkgs.contains(pkg) || pkg.equals(ctx.getPackageName()) || hidden.contains(pkg)) continue;
+                String actLabel = Cards.cleanLabel(String.valueOf(ri.loadLabel(pm)), pkg);
+                String appLabel = Cards.cleanLabel(String.valueOf(ri.activityInfo.applicationInfo.loadLabel(pm)), pkg);
+                int slot = dockSlot(pkg, actLabel, appLabel, favourites);
+                if (slot < 0) continue;
+                seenPkgs.add(pkg);
+                ComponentName component = new ComponentName(pkg, ri.activityInfo.name);
+                Drawable banner = loadBanner(pm, ri);
+                Drawable icon = ri.loadIcon(pm);
+                fresh.add(new Entry(actLabel, component, banner, icon, slot, Intent.CATEGORY_LAUNCHER));
             }
         }
         Collections.sort(fresh, (a, b) -> {
-            int fa = favourites.indexOf(a.pkg), fb = favourites.indexOf(b.pkg);
-            if (fa >= 0 || fb >= 0) {
-                if (fa < 0) return 1;
-                if (fb < 0) return -1;
-                return Integer.compare(fa, fb);
+            if (a.dockSlot >= 0 || b.dockSlot >= 0) {
+                if (a.dockSlot < 0) return 1;
+                if (b.dockSlot < 0) return -1;
+                int c = Integer.compare(a.dockSlot, b.dockSlot);
+                if (c != 0) return c;
             }
             // Cards come right after the configured dock apps, before the alphabetical grid.
             boolean ca = a.kind == Entry.CARD, cb = b.kind == Entry.CARD;
@@ -177,8 +260,17 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
                 && pm.resolveActivity(new Intent(Settings.ACTION_HOME_SETTINGS), 0) != null) {
             fresh.add(new Entry(Entry.HOME_SETTINGS, ctx.getString(R.string.home_settings),
                     new ComponentName(ctx, HomeSettingsActivity.class), null,
-                    ctx.getDrawable(R.drawable.ic_home_settings), null, 0));
+                    ctx.getDrawable(R.drawable.ic_home_settings), null, 0, -1, Intent.CATEGORY_LEANBACK_LAUNCHER));
         }
+        int pinned = 0;
+        if (favourites.isEmpty()) {
+            pinned = Math.min(dockSize, fresh.size());
+        } else {
+            while (pinned < fresh.size() && pinned < dockSize && fresh.get(pinned).dockSlot >= 0) {
+                pinned++;
+            }
+        }
+        pinnedDockCount = pinned;
         items.clear();
         items.addAll(fresh);
         notifyDataSetChanged();
@@ -206,6 +298,7 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         float density = parent.getResources().getDisplayMetrics().density;
         int width = parent.getWidth() > 0 ? parent.getWidth() : parent.getMeasuredWidth();
         int inner = width - parent.getPaddingLeft() - parent.getPaddingRight();
+        int cellWidth = inner > 0 && dockSize > 0 ? inner / dockSize : 0;
         int w = tileWidthPx(inner, dockSize, density), h = tileHeightPx(w);
         View card = v.findViewById(R.id.card);
         ViewGroup.LayoutParams cardLp = card.getLayoutParams();
@@ -217,14 +310,22 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         nameLp.width = w;
         nameLp.topMargin = h + Math.round(7 * density);
         name.setLayoutParams(nameLp);
-        return new Holder(v, listener, reducedMotion);
+        return new Holder(v, listener, reducedMotion, cellWidth);
     }
 
     @Override
     public void onBindViewHolder(@NonNull Holder h, int position) {
         Entry e = items.get(position);
+        boolean inDock = position < pinnedDockCount;
+        boolean spansRest = inDock && pinnedDockCount < dockSize && position == pinnedDockCount - 1;
+        ViewGroup.LayoutParams itemLp = h.itemView.getLayoutParams();
+        int wantWidth = spansRest && h.cellWidth > 0 ? h.cellWidth : ViewGroup.LayoutParams.MATCH_PARENT;
+        if (itemLp != null && itemLp.width != wantWidth) {
+            itemLp.width = wantWidth;
+            h.itemView.setLayoutParams(itemLp);
+        }
         h.name.setText(e.name);
-        h.name.setVisibility(position < dockSize ? View.INVISIBLE : View.VISIBLE);   // the dock has no labels
+        h.name.setVisibility(inDock ? View.INVISIBLE : View.VISIBLE);   // the dock has no labels
         boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
         h.name.setAlpha(focused ? 1f : 0f);
         h.card.setScaleX(focused ? FOCUS_SCALE : 1f);
@@ -262,7 +363,7 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             return;
         }
         Intent i = new Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+                .addCategory(e.launchCategory)
                 .setComponent(e.component)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         try {
@@ -362,8 +463,9 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         final TextView label;
         final TextView name;
         final boolean reducedMotion;
+        final int cellWidth;
 
-        Holder(View v, TileListener listener, boolean reducedMotion) {
+        Holder(View v, TileListener listener, boolean reducedMotion, int cellWidth) {
             super(v);
             card = v.findViewById(R.id.card);
             banner = v.findViewById(R.id.banner);
@@ -371,6 +473,7 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             label = v.findViewById(R.id.label);
             name = v.findViewById(R.id.name);
             this.reducedMotion = reducedMotion;
+            this.cellWidth = cellWidth;
 
             final float density = v.getResources().getDisplayMetrics().density;
             card.setOutlineProvider(new ViewOutlineProvider() {

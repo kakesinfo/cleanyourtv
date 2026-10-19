@@ -96,6 +96,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private TextView shamsiDate;
     private boolean shamsi;
     private String vpnApp;
+    private int rowsBelowDock;
     private SpringAnimation springX, springY;
     private float glassTargetX, glassTargetY;
     // How far the grid has scrolled the glass. springY works without it, in grid content space, so a
@@ -215,32 +216,32 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         hiddenApps = new HashSet<>(cfg.hiddenApps);
 
         grid = findViewById(R.id.grid);
-        grid.setLayoutManager(new GridLayoutManager(this, COLUMNS));
+        adapter = new AppAdapter(this, this, COLUMNS, cfg);
+        GridLayoutManager glm = new GridLayoutManager(this, COLUMNS);
+        glm.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override
+            public int getSpanSize(int position) {
+                int dc = adapter.dockCount();
+                if (dc > 0 && dc < COLUMNS && position == dc - 1) {
+                    return COLUMNS - dc + 1;
+                }
+                return 1;
+            }
+        });
+        grid.setLayoutManager(glm);
         grid.setHasFixedSize(true);
         grid.setItemAnimator(null);
-        grid.addItemDecoration(new DockDecoration(COLUMNS, density));
+        grid.addItemDecoration(new DockDecoration(adapter, COLUMNS, density));
         int enterAnim = reducedMotion ? R.anim.tile_enter_reduced : R.anim.tile_enter;
         float enterDelay = reducedMotion ? 0f : 0.06f;
         grid.setLayoutAnimation(new LayoutAnimationController(
                 AnimationUtils.loadAnimation(this, enterAnim), enterDelay));
-        adapter = new AppAdapter(this, this, COLUMNS, cfg);
         grid.setAdapter(adapter);
 
         // tvOS layout: push the dock row towards the bottom of the screen, leaving room for
         // rows_below_dock grid rows under it; the rest of the grid stays below until you press Down.
-        int rowsBelowDock = cfg.rowsBelowDock;
-        grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            int h = b - t;
-            // Item height follows the tile size, which follows the column count (AppAdapter.tileWidthPx).
-            int inner = (r - l) - grid.getPaddingLeft() - grid.getPaddingRight();
-            int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density)), density);
-            int dockRow = itemH + (int) ((6 + 12) * density);   // item height plus DockDecoration offsets
-            int gridRows = itemH * rowsBelowDock;
-            int want = Math.max(0, h - dockRow - gridRows - (int) (30 * density));
-            if (grid.getPaddingTop() != want) {
-                grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
-            }
-        });
+        rowsBelowDock = cfg.rowsBelowDock;
+        grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateGridPaddingTop());
 
         // Keep the glass glued to its tile while the grid scrolls.
         grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -299,7 +300,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
-                focusTile(lastFocused % COLUMNS);
+                int dc = adapter.dockCount();
+                focusTile(dc > 0 ? Math.min(lastFocused, dc - 1) : 0);
                 return true;
             }
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
@@ -333,6 +335,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
                     .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                     .build(), vpnCallback);
+        }
+    }
+
+    private void updateGridPaddingTop() {
+        int h = grid.getHeight();
+        if (h <= 0) return;
+        // Item height follows the tile size, which follows the column count (AppAdapter.tileWidthPx).
+        int inner = grid.getWidth() - grid.getPaddingLeft() - grid.getPaddingRight();
+        int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density)), density);
+        int gridRows = itemH * rowsBelowDock;
+        int want;
+        if (adapter.dockCount() > 0) {
+            int dockRow = itemH + (int) ((6 + 12) * density);   // item height plus DockDecoration offsets
+            want = Math.max(0, h - dockRow - gridRows - (int) (30 * density));
+        } else {
+            want = Math.max(0, h - gridRows);
+        }
+        if (grid.getPaddingTop() != want) {
+            grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
         }
     }
 
@@ -373,7 +394,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
         grid.scrollToPosition(0);
         lastFocused = 0;
-        lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
+        lastFocusedKey = adapter.dockCount() > 0 ? adapter.keyAt(0) : null;
     }
 
     @Override
@@ -436,6 +457,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         final List<Cards.Card> none = Collections.emptyList();
         cards = moduleCards ? CardFeature.run(() -> Cards.discover(this, hiddenApps, Cards.load(Cards.storeFile(this))), none) : none;
         adapter.reload(cards.isEmpty() ? none : CardFeature.run(() -> Cards.shown(cards), none));
+        updateGridPaddingTop();
+        grid.invalidateItemDecorations();
         lastFocusedKey = returnKey;
         lastFocused = returnSlot;
     }
@@ -448,6 +471,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         final String returnKey = lastFocusedKey;
         final int returnSlot = lastFocused;
         grid.post(() -> {
+            if (adapter.dockCount() == 0 && returnKey == null) {
+                btnWifi.requestFocus();
+                tilesReady = true;
+                showCardPrompt();
+                return;
+            }
             int pos = adapter.positionOf(returnKey);
             focusTile(pos >= 0 ? pos : returnSlot);
             tilesReady = true;
@@ -524,7 +553,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             springY.animateToFinalPosition(y - glassScrollShift);
         }
         View item = (View) card.getParent();
-        if (position < COLUMNS) {
+        if (position < adapter.dockCount()) {
             // Dock: park it at the bottom of the screen and show the top shelf for this app.
             int decoratedTop = item.getTop() - (int) (6 * density);
             int dy = decoratedTop - grid.getPaddingTop();
@@ -639,21 +668,38 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public boolean onTileVerticalKey(int position, int keyCode) {
         int count = adapter.getItemCount();
+        int dockCount = adapter.dockCount();
         int target;
         // Horizontal: swallow the key at a row's ends so focus never wraps to the next row or
         // escapes up into the top bar. Mid-row moves fall through to the default focus search.
+        if (position < dockCount) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return position == 0;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return position == dockCount - 1;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return false;          // dock row: let focus move to the top bar
+            if (count <= dockCount) return true;                            // no grid rows below the dock
+            target = Math.min(dockCount + position, count - 1);
+            focusTile(target);
+            return true;
+        }
+        int gridPos = position - dockCount;
+        int col = gridPos % COLUMNS;
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            return position % COLUMNS == 0;
+            return col == 0;
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            return position % COLUMNS == COLUMNS - 1 || position == count - 1;
+            return col == COLUMNS - 1 || position == count - 1;
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
-            target = position - COLUMNS;
+            if (gridPos < COLUMNS) {
+                if (dockCount == 0) return false;                           // no dock: let focus move to the top bar
+                target = Math.min(col, dockCount - 1);
+            } else {
+                target = position - COLUMNS;
+            }
         } else {
-            int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
-            if (position >= lastRowStart) return true;     // already on the last row: stay put
+            int gridCount = count - dockCount;
+            int lastRowStart = dockCount + ((gridCount - 1) / COLUMNS) * COLUMNS;
+            if (position >= lastRowStart) return true;                      // already on the last row: stay put
             target = Math.min(position + COLUMNS, count - 1);
         }
         focusTile(target);
@@ -884,7 +930,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         && (info.getServiceInfo().applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0) {
                     // Prefer a hardware tuner: the framework names those ".../HW<n>". System apps such as
                     // AirPlay also register software inputs of type TUNER and may sort first (seen on TCL G05).
-                    boolean hw = info.getId().matches(".*/HW\\d+$");
+                    boolean hw = info.getId().matches(".*/HW\\\\d+$");
                     if (tunerId == null || (hw && !tunerIsHw) || (hw == tunerIsHw && info.getId().compareTo(tunerId) < 0)) {
                         tunerId = info.getId();
                         tunerIsHw = hw;
