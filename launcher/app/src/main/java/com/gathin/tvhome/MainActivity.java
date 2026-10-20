@@ -947,9 +947,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         // Fit the widest row: TVs that report long device names will stretch nicely.
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
-        popup.setWidth(Math.max(width, panel.getMeasuredWidth()));
+        int finalWidth = Math.max(width, panel.getMeasuredWidth());
+        popup.setWidth(finalWidth);
 
-        dropIn(popup, panel, anchor, Gravity.START);
+        // Center horizontally with respect to the anchor button:
+        int xOffset = (anchor.getWidth() - finalWidth) / 2;
+        dropIn(popup, panel, anchor, xOffset, (int) (10 * density));
         rows.getChildAt(0).requestFocus();
     }
 
@@ -967,14 +970,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     /** Drop in: fade and unfold from the top edge, hanging under the anchor pill. */
-    private void dropIn(PopupWindow popup, View panel, View anchor, int gravity) {
+    private void dropIn(PopupWindow popup, View panel, View anchor, int xOffset, int yOffset) {
         panel.setAlpha(0f);
         panel.setPivotY(0f);
         panel.setScaleY(0.92f);
         panel.setTranslationY(-8 * density);
-        popup.showAsDropDown(anchor, 0, (int) (10 * density), gravity);
+        popup.showAsDropDown(anchor, xOffset, yOffset);
         panel.animate().alpha(1f).scaleY(1f).translationY(0f).setDuration(220)
                 .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
+    }
+
+    private void dropIn(PopupWindow popup, View panel, View anchor, int gravity) {
+        dropIn(popup, panel, anchor, 0, (int) (10 * density));
     }
 
     private void addSeparator(LinearLayout rows) {

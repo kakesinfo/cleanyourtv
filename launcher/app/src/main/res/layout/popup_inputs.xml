@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="@drawable/glass_panel"
+    android:background="@drawable/popup_sources_bg"
     android:padding="6dp"
     android:elevation="12dp">
 
