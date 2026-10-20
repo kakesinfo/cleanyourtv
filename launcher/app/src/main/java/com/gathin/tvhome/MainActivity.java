@@ -816,6 +816,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         open(new Intent(inputAction).setDataAndType(uri, "vnd.android.cursor.item/channel"));
     }
 
+    private java.util.Map<String, String> loadCustomInputLabels() {
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        try {
+            String raw = Settings.Global.getString(getContentResolver(), "tv_input_custom_labels");
+            if (raw == null || raw.isEmpty()) return map;
+            for (String pair : raw.split(":")) {
+                int comma = pair.indexOf(',');
+                if (comma <= 0 || comma >= pair.length() - 1) continue;
+                String id = Uri.decode(pair.substring(0, comma));
+                String name = Uri.decode(pair.substring(comma + 1)).trim();
+                if (!id.isEmpty() && !name.isEmpty()) {
+                    map.put(id, name);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return map;
+    }
+
     /** Dropdown menu under the Inputs pill: HDMI ports (with connection state), AV and Live TV. */
     private void showInputs() {
         View anchor = findViewById(R.id.btnInputs);
@@ -832,6 +851,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         boolean tunerIsHw = false;
         if (tim != null) {
             List<TvInputInfo> inputs = new ArrayList<>(tim.getTvInputList());
+            java.util.Map<String, String> customLabels = loadCustomInputLabels();
+            java.util.Map<String, String> cecLabels = new java.util.HashMap<>();
+            for (TvInputInfo info : inputs) {
+                String parentId = info.getParentId();
+                if (parentId != null) {
+                    CharSequence cl = info.loadLabel(this);
+                    if (cl != null && cl.length() > 0) {
+                        if (!cecLabels.containsKey(parentId)
+                                || tim.getInputState(info.getId()) == TvInputManager.INPUT_STATE_CONNECTED) {
+                            cecLabels.put(parentId, cl.toString().trim());
+                        }
+                    }
+                }
+            }
             // HDMI ports first in port order, then AV and the rest.
             Collections.sort(inputs, (a, b) -> {
                 boolean ha = a.getType() == TvInputInfo.TYPE_HDMI, hb = b.getType() == TvInputInfo.TYPE_HDMI;
@@ -842,7 +875,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // so drop the HDMI status then. A TV with every port really in use loses it too.
             int hdmiPorts = 0, hdmiConnected = 0;
             for (TvInputInfo info : inputs) {
-                if (!info.isPassthroughInput() || info.getType() != TvInputInfo.TYPE_HDMI) continue;
+                if (!info.isPassthroughInput() || info.getType() != TvInputInfo.TYPE_HDMI || info.getParentId() != null) continue;
                 hdmiPorts++;
                 if (tim.getInputState(info.getId()) == TvInputManager.INPUT_STATE_CONNECTED) hdmiConnected++;
             }
@@ -852,17 +885,30 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         && (info.getServiceInfo().applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0) {
                     // Prefer a hardware tuner: the framework names those ".../HW<n>". System apps such as
                     // AirPlay also register software inputs of type TUNER and may sort first (seen on TCL G05).
-                    boolean hw = info.getId().matches(".*/HW\\\\d+$");
+                    boolean hw = info.getId().matches(".*/HW\\d+$");
                     if (tunerId == null || (hw && !tunerIsHw) || (hw == tunerIsHw && info.getId().compareTo(tunerId) < 0)) {
                         tunerId = info.getId();
                         tunerIsHw = hw;
                     }
                 }
-                if (!info.isPassthroughInput()) continue;
+                if (!info.isPassthroughInput() || info.getParentId() != null) continue;
                 CharSequence l = info.loadLabel(this);
-                String label = l == null ? info.getId() : l.toString();
+                String label = l == null ? info.getId() : l.toString().trim();
                 boolean hdmi = info.getType() == TvInputInfo.TYPE_HDMI;
                 if (hdmi && !label.toUpperCase(Locale.ROOT).contains("HDMI")) label = "HDMI " + label;
+                String deviceName = cecLabels.get(info.getId());
+                if (deviceName == null || deviceName.isEmpty()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        CharSequence custom = info.loadCustomLabel(this);
+                        if (custom != null && custom.length() > 0) deviceName = custom.toString().trim();
+                    }
+                    if (deviceName == null || deviceName.isEmpty()) {
+                        deviceName = customLabels.get(info.getId());
+                    }
+                }
+                if (deviceName != null && !deviceName.isEmpty() && !deviceName.equalsIgnoreCase(label)) {
+                    label = label + " · " + deviceName;
+                }
                 final String id = info.getId();
                 int state = hdmi && hdmiStateBogus ? -1 : tim.getInputState(id);
                 if (!hdmi && rows.getChildCount() > 0 && !sawNonHdmi) addSeparator(rows);
