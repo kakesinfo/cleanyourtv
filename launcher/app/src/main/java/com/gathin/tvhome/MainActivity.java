@@ -819,7 +819,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private java.util.Map<String, String> loadCustomInputLabels() {
         java.util.Map<String, String> map = new java.util.HashMap<>();
         try {
-            String raw = Settings.Global.getString(getContentResolver(), "tv_input_custom_labels");
+            // Check Secure first, then Global
+            String raw = Settings.Secure.getString(getContentResolver(), "tv_input_custom_labels");
+            if (raw == null || raw.isEmpty()) {
+                raw = Settings.Global.getString(getContentResolver(), "tv_input_custom_labels");
+            }
             if (raw == null || raw.isEmpty()) return map;
             for (String pair : raw.split(":")) {
                 int comma = pair.indexOf(',');
@@ -835,14 +839,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         return map;
     }
 
-    /** Dropdown menu under the Inputs pill: HDMI ports (with connection state), AV and Live TV. */
+    /** Dropdown menu under the Inputs pill: connected HDMI ports, AV and Live TV. */
     private void showInputs() {
         View anchor = findViewById(R.id.btnInputs);
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
 
-        // Compact: as wide as the Inputs pill (a touch wider so "HDMI 1" fits), hanging right below it.
-        int width = Math.max(anchor.getWidth(), (int) (150 * density));
+        int width = Math.max(anchor.getWidth(), (int) (180 * density));
         final PopupWindow popup = glassPopup(panel, width);
 
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
@@ -871,20 +874,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 if (ha != hb) return ha ? -1 : 1;
                 return String.valueOf(a.loadLabel(this)).compareToIgnoreCase(String.valueOf(b.loadLabel(this)));
             });
-            // Some TVs (Sony) report every HDMI port as connected whether or not anything is plugged in,
-            // so drop the HDMI status then. A TV with every port really in use loses it too.
-            int hdmiPorts = 0, hdmiConnected = 0;
-            for (TvInputInfo info : inputs) {
-                if (!info.isPassthroughInput() || info.getType() != TvInputInfo.TYPE_HDMI || info.getParentId() != null) continue;
-                hdmiPorts++;
-                if (tim.getInputState(info.getId()) == TvInputManager.INPUT_STATE_CONNECTED) hdmiConnected++;
-            }
-            boolean hdmiStateBogus = hdmiPorts > 1 && hdmiConnected == hdmiPorts;
+
             for (TvInputInfo info : inputs) {
                 if (info.getType() == TvInputInfo.TYPE_TUNER
                         && (info.getServiceInfo().applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0) {
-                    // Prefer a hardware tuner: the framework names those ".../HW<n>". System apps such as
-                    // AirPlay also register software inputs of type TUNER and may sort first (seen on TCL G05).
                     boolean hw = info.getId().matches(".*/HW\\d+$");
                     if (tunerId == null || (hw && !tunerIsHw) || (hw == tunerIsHw && info.getId().compareTo(tunerId) < 0)) {
                         tunerId = info.getId();
@@ -892,34 +885,50 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     }
                 }
                 if (!info.isPassthroughInput() || info.getParentId() != null) continue;
+                final String id = info.getId();
+                int state = tim.getInputState(id);
+                boolean isConnected = state == TvInputManager.INPUT_STATE_CONNECTED
+                        || state == TvInputManager.INPUT_STATE_CONNECTED_STANDBY;
+                // User requirement: only show connected sources in the Sources menu.
+                if (!isConnected) continue;
+
                 CharSequence l = info.loadLabel(this);
-                String label = l == null ? info.getId() : l.toString().trim();
+                String portName = l == null ? id : l.toString().trim();
                 boolean hdmi = info.getType() == TvInputInfo.TYPE_HDMI;
-                if (hdmi && !label.toUpperCase(Locale.ROOT).contains("HDMI")) label = "HDMI " + label;
-                String deviceName = cecLabels.get(info.getId());
+                if (hdmi && !portName.toUpperCase(Locale.ROOT).contains("HDMI")) {
+                    portName = "HDMI " + portName;
+                }
+
+                String deviceName = cecLabels.get(id);
                 if (deviceName == null || deviceName.isEmpty()) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         CharSequence custom = info.loadCustomLabel(this);
                         if (custom != null && custom.length() > 0) deviceName = custom.toString().trim();
                     }
                     if (deviceName == null || deviceName.isEmpty()) {
-                        deviceName = customLabels.get(info.getId());
+                        deviceName = customLabels.get(id);
                     }
                 }
-                if (deviceName != null && !deviceName.isEmpty() && !deviceName.equalsIgnoreCase(label)) {
-                    label = label + " · " + deviceName;
+
+                String primaryTitle;
+                String subtitle;
+                if (deviceName != null && !deviceName.isEmpty() && !deviceName.equalsIgnoreCase(portName)) {
+                    primaryTitle = deviceName;
+                    subtitle = portName;
+                } else {
+                    primaryTitle = portName;
+                    subtitle = null;
                 }
-                final String id = info.getId();
-                int state = hdmi && hdmiStateBogus ? -1 : tim.getInputState(id);
+
                 if (!hdmi && rows.getChildCount() > 0 && !sawNonHdmi) addSeparator(rows);
                 if (!hdmi) sawNonHdmi = true;
-                addInputRow(rows, popup, hdmi ? R.drawable.ic_input : R.drawable.ic_av, label, state,
+                addInputRow(rows, popup, hdmi ? R.drawable.ic_input : R.drawable.ic_av, primaryTitle, subtitle,
                         () -> openInput(id));
             }
         }
         // Nothing to list where there is no TvInputManager: the TV's own source panel switches inputs.
         if (rows.getChildCount() == 0 && !sourcePanelService.isEmpty()) {
-            addInputRow(rows, popup, R.drawable.ic_input, getString(R.string.inputs), -1, this::openSourcePanel);
+            addInputRow(rows, popup, R.drawable.ic_input, getString(R.string.inputs), null, this::openSourcePanel);
         }
         Intent liveTv = liveTvIntent();
         if (liveTv != null && tunerId != null) {
@@ -930,14 +939,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (liveTv != null) {
             if (rows.getChildCount() > 0) addSeparator(rows);
             final Intent liveTvIntent = liveTv;
-            addInputRow(rows, popup, R.drawable.ic_livetv, getString(R.string.live_tv), -1, () -> open(liveTvIntent));
+            addInputRow(rows, popup, R.drawable.ic_livetv, getString(R.string.live_tv), null, () -> open(liveTvIntent));
         }
         if (rows.getChildCount() == 0) {
             Toast.makeText(this, R.string.no_inputs, Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Fit the widest row: TVs that report a status on every port (Sony) would otherwise squeeze the names out.
+        // Fit the widest row: TVs that report long device names will stretch nicely.
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max(width, panel.getMeasuredWidth()));
 
@@ -978,23 +987,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         rows.addView(line, lp);
     }
 
-    private void addInputRow(LinearLayout rows, PopupWindow popup, int iconRes, String title, int state, Runnable action) {
+    private void addInputRow(LinearLayout rows, PopupWindow popup, int iconRes, String title, String subtitle, Runnable action) {
         View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
         ((ImageView) row.findViewById(R.id.icon)).setImageResource(iconRes);
         ((TextView) row.findViewById(R.id.title)).setText(title);
-        TextView status = row.findViewById(R.id.status);
-        View dot = row.findViewById(R.id.dot);
-        // This TV reports "standby" for every port whether or not something is plugged in, so only
-        // definite states are shown.
-        if (state == TvInputManager.INPUT_STATE_CONNECTED) {
-            status.setText(R.string.connected);
-            dot.setVisibility(View.VISIBLE);
-        } else if (state == TvInputManager.INPUT_STATE_DISCONNECTED) {
-            status.setText(R.string.not_connected);
-            dot.setVisibility(View.GONE);
-        } else {
-            status.setVisibility(View.GONE);
-            dot.setVisibility(View.GONE);
+        TextView sub = row.findViewById(R.id.subtitle);
+        if (sub != null) {
+            if (subtitle != null && !subtitle.isEmpty()) {
+                sub.setText(subtitle);
+                sub.setVisibility(View.VISIBLE);
+            } else {
+                sub.setVisibility(View.GONE);
+            }
         }
         row.setOnClickListener(v -> {
             popup.dismiss();
@@ -1003,13 +1007,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         rows.addView(row);
     }
 
-    // ---- module cards ----------------------------------------------------------------------------
-
-    /**
-     * Asks about the next card that has no decision for its current signing key. One prompt at a
-     * time, only over a laid out grid with window focus (not under a popup or another app), and
-     * the next one follows as soon as this one is answered. Nothing is shown until the owner says Show.
-     */
     private void showCardPrompt() {
         if (!moduleCards || !tilesReady || promptsPaused || cardPrompt != null || !hasWindowFocus() || isFinishing()) return;
         if (cards.isEmpty() || !CardFeature.working()) return;
