@@ -7,13 +7,9 @@ import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 /**
- * Sends the remote's Home button to this launcher on remotes that emit KEYCODE_ALL_APPS for Home
- * (Xiaomi sticks and boxes). Android TV 9 routes that key only to the system-image launcher, so once
- * the stock launcher is disabled the button does nothing. Every other key passes through untouched.
- *
- * Enable over adb:
- *   settings put secure enabled_accessibility_services com.gathin.tvhome/.HomeKeyService
- *   settings put secure accessibility_enabled 1
+ * Handles remote Home and Quick Settings keys.
+ * Also intercepts stock HomeActivity to keep tvhome active while preserving
+ * the Google TV lateral right-side Quick Settings panel (DashboardHandler).
  */
 public class HomeKeyService extends AccessibilityService {
 
@@ -34,26 +30,53 @@ public class HomeKeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
-        // The stock launcher handled the remote's Settings button; with it disabled the button does nothing.
         if (isSettingsKey(event)) {
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
-                startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                openQuickSettingsPanel();
             }
             return true;
         }
-        if (event.getKeyCode() != KeyEvent.KEYCODE_ALL_APPS) return false;
-        if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
-            Intent home = new Intent(Intent.ACTION_MAIN)
-                    .addCategory(Intent.CATEGORY_HOME)
-                    .setPackage(getPackageName())
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-            startActivity(home);
+        if (event.getKeyCode() == KeyEvent.KEYCODE_HOME || event.getKeyCode() == KeyEvent.KEYCODE_ALL_APPS) {
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                openHome();
+            }
+            return true;
         }
-        return true;
+        return false;
+    }
+
+    private void openQuickSettingsPanel() {
+        Intent panel = new Intent("android.app.action.OPEN_NOTIFICATION_HANDLER_PANEL")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (panel.resolveActivity(getPackageManager()) != null) {
+            try {
+                startActivity(panel);
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+        startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+
+    private void openHome() {
+        Intent home = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        startActivity(home);
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            CharSequence pkg = event.getPackageName();
+            CharSequence cls = event.getClassName();
+            if (pkg != null && "com.google.android.apps.tv.launcherx".contentEquals(pkg)) {
+                // If stock HomeActivity is attempting to display, redirect to our launcher.
+                // Do NOT redirect when DashboardHandler (Quick Settings panel) is opening.
+                if (cls != null && cls.toString().contains("HomeActivity")) {
+                    openHome();
+                }
+            }
+        }
     }
 
     @Override

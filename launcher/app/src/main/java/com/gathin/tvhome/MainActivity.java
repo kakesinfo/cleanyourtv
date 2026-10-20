@@ -733,6 +733,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 }
             } catch (Exception ignored) {
             }
+            try {
+                startActivity(panel);
+                return;
+            } catch (Exception ignored) {
+            }
         }
         open(systemIntent(Settings.ACTION_SETTINGS));
     }
