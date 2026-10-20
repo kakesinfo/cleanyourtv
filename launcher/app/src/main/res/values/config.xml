@@ -10,7 +10,6 @@
     <!-- Apps pinned to the dock row at the bottom, in this order (by app name or package name). Missing apps are skipped. -->
     <string-array name="dock_apps">
         <item>FreeTV</item>
-        <item>Jellyfin</item>
         <item>Plezy</item>
         <item>Spotify</item>
         <item>YouTube</item>
@@ -60,7 +59,7 @@
 
     <!-- Tiles per row in the grid; the dock always has this many slots. Tiles are 180dp wide at 4 columns and
          shrink to fit from 5 up (about 144dp at 5, 117dp at 6 on a 1080p TV). -->
-    <integer name="columns">5</integer>
+    <integer name="columns">4</integer>
 
     <!-- "Default home" tile that opens Android's home-screen picker, for TVs whose settings have one
          (most Android TVs don't; the tile only appears when the page exists). Off by default. -->
