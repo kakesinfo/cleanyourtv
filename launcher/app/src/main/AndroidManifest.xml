@@ -34,6 +34,7 @@
         </intent>
         <!-- China-market MIUI TV firmware: the Settings and Wi-Fi pills fall back to Xiaomi's settings app. -->
         <package android:name="com.xiaomi.mitv.settings" />
+        <package android:name="com.google.android.apps.tv.launcherx" />
     </queries>
 
     <application
