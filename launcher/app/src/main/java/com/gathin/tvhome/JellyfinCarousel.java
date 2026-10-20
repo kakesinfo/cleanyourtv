@@ -41,7 +41,7 @@ import java.util.concurrent.Executors;
 /**
  * Fetches the latest movies and series (sorted by release date, PremiereDate descending)
  * from a Jellyfin server, caches their backdrop images on disk, darkens them with a cinematic vignette
- * for home-screen legibility, and crossfades them in the background.
+ * for legibility, and crossfades them in the background.
  */
 final class JellyfinCarousel {
     private static final String TAG = "TvHome.Jellyfin";
@@ -52,6 +52,7 @@ final class JellyfinCarousel {
     private final Context ctx;
     private final ImageView viewA;
     private final ImageView viewB;
+    private final boolean screensaverMode;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "jellyfin-carousel");
@@ -84,9 +85,14 @@ final class JellyfinCarousel {
     };
 
     JellyfinCarousel(Context ctx, ImageView viewA, ImageView viewB) {
+        this(ctx, viewA, viewB, false);
+    }
+
+    JellyfinCarousel(Context ctx, ImageView viewA, ImageView viewB, boolean screensaverMode) {
         this.ctx = ctx.getApplicationContext();
         this.viewA = viewA;
         this.viewB = viewB;
+        this.screensaverMode = screensaverMode;
     }
 
     void configure(Config cfg) {
@@ -123,7 +129,7 @@ final class JellyfinCarousel {
             return;
         }
         running = true;
-        // Load any existing cached backdrops immediately so the home screen isn't blank while syncing.
+        // Load any existing cached backdrops immediately so the screen isn't blank while syncing.
         executor.execute(() -> {
             List<File> cached = loadCachedFiles();
             if (!cached.isEmpty()) {
@@ -500,8 +506,7 @@ final class JellyfinCarousel {
 
     /**
      * Decodes a cached backdrop image at screen resolution (RGB_565) and bakes in a dark cinematic
-     * vignette so the top clock/buttons and the bottom dock remain crisp and readable without extra
-     * GPU overdraw during crossfades.
+     * vignette so UI elements remain crisp and readable without extra GPU overdraw during crossfades.
      */
     private Bitmap decodeAndDarken(File file) {
         try {
@@ -540,11 +545,13 @@ final class JellyfinCarousel {
             canvas.drawBitmap(raw, srcRect, dstRect, bmpPaint);
             if (raw != out) raw.recycle();
 
-            // Darken overall + top/bottom cinematic gradient so UI elements pop cleanly
             Paint scrim = new Paint();
+            int[] colors = screensaverMode
+                    ? new int[]{0x4D000000, 0x1A000000, 0x26000000, 0x66000000, 0xA6000000}
+                    : new int[]{0xB3000000, 0x59000000, 0x66000000, 0xCC000000, 0xF2000000};
             scrim.setShader(new LinearGradient(
                     0f, 0f, 0f, targetH,
-                    new int[]{0xB3000000, 0x59000000, 0x66000000, 0xCC000000, 0xF2000000},
+                    colors,
                     new float[]{0f, 0.25f, 0.55f, 0.82f, 1f},
                     Shader.TileMode.CLAMP));
             canvas.drawRect(0, 0, targetW, targetH, scrim);
