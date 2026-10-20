@@ -46,6 +46,17 @@
     <string name="card_state_new">New</string>
     <string name="card_state_new_key">New key</string>
     <string name="card_state_new_label">New name</string>
-    <string name="other_apps">Autres applications</string>
-    <string name="back_to_home">Accueil</string>
+    <string name="other_apps">Other apps</string>
+    <string name="back_to_home">Home</string>
+    <string name="quick_settings_title">Quick Settings</string>
+    <string name="qs_picture_title">Picture</string>
+    <string name="qs_picture_desc">Dolby Vision, picture styles, calibration</string>
+    <string name="qs_audio_title">Audio Out</string>
+    <string name="qs_audio_desc">Sound output, eARC, audio format</string>
+    <string name="qs_wifi_title">Network &amp; Wi-Fi</string>
+    <string name="qs_wifi_desc">Wireless connection, Ethernet</string>
+    <string name="qs_bluetooth_title">Bluetooth &amp; Remotes</string>
+    <string name="qs_bluetooth_desc">Accessories, remotes, controllers</string>
+    <string name="qs_settings_title">All Settings</string>
+    <string name="qs_settings_desc">System and device preferences</string>
 </resources>

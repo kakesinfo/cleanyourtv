@@ -1,23 +1,19 @@
 package com.gathin.tvhome;
 
 import android.accessibilityservice.AccessibilityService;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityEvent;
 
-import java.lang.reflect.Method;
-
 /**
  * Handles remote Home and Quick Settings keys.
  * Short-press Home -> returns to clean tvhome launcher.
- * Long-press Home -> opens lateral right-side Quick Settings panel.
- * Quick Settings key -> opens lateral right-side Quick Settings panel.
+ * Long-press Home -> opens custom lateral Quick Settings panel.
+ * Quick Settings key -> opens custom lateral Quick Settings panel.
  * Redirects stock Google TV home screen to tvhome immediately on boot and navigation.
  */
 public class HomeKeyService extends AccessibilityService {
@@ -92,41 +88,10 @@ public class HomeKeyService extends AccessibilityService {
     }
 
     private void openQuickSettingsPanel() {
-        // 1. Try invoking expandNotificationsPanel() on StatusBarManager (native Android TV method)
-        try {
-            Object sb = getSystemService("statusbar");
-            if (sb != null) {
-                Method m = sb.getClass().getMethod("expandNotificationsPanel");
-                m.invoke(sb);
-                return;
-            }
-        } catch (Exception ignored) {
-        }
-
-        // 2. Try launching OPEN_NOTIFICATION_HANDLER_PANEL directly targeting Google TV launcherx
-        try {
-            Intent panel = new Intent("android.app.action.OPEN_NOTIFICATION_HANDLER_PANEL")
-                    .setPackage("com.google.android.apps.tv.launcherx")
-                    .addCategory(Intent.CATEGORY_DEFAULT)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(panel);
-            return;
-        } catch (Exception ignored) {
-        }
-
-        // 3. Try launching explicit DashboardHandler component
-        try {
-            Intent panel = new Intent()
-                    .setComponent(new ComponentName("com.google.android.apps.tv.launcherx",
-                            "com.google.android.apps.tv.launcherx.dashboard.DashboardHandler"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(panel);
-            return;
-        } catch (Exception ignored) {
-        }
-
-        // Fallback to Settings only if all lateral panel attempts fail
-        startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        Intent panel = new Intent(this, MainActivity.class)
+                .setAction("com.gathin.tvhome.action.QUICK_SETTINGS")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(panel);
     }
 
     private void openHome() {
@@ -143,11 +108,9 @@ public class HomeKeyService extends AccessibilityService {
             CharSequence pkg = event.getPackageName();
             CharSequence cls = event.getClassName();
             if (pkg != null && "com.google.android.apps.tv.launcherx".contentEquals(pkg)) {
-                // If stock HomeActivity or any other launcherx activity (except Dashboard / Quick Settings panel) appears, redirect
-                if (cls == null || (!cls.toString().contains("Dashboard") && !cls.toString().contains("Notification"))) {
-                    Log.i(TAG, "Stock Google TV home activity detected (" + cls + "), redirecting to clean home");
-                    openHome();
-                }
+                // If stock HomeActivity or any other launcherx activity appears, redirect
+                Log.i(TAG, "Stock Google TV home activity detected (" + cls + "), redirecting to clean home");
+                openHome();
             }
         }
     }

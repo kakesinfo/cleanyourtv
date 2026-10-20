@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- Needed on Android 10 to read the Wi-Fi network name; granted over adb at install time. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
@@ -29,13 +31,19 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="com.gathin.tvhome.category.DOCK_CARD" />
         </intent>
-        <!-- Google TV / Android TV right-side Quick Settings (Dashboard) panel handler. -->
+        <!-- Lateral settings intents -->
         <intent>
-            <action android:name="android.app.action.OPEN_NOTIFICATION_HANDLER_PANEL" />
+            <action android:name="android.settings.PICTURE_STYLE" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SPEAKERS_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.bluetooth.devicepicker.action.LAUNCH" />
         </intent>
         <!-- China-market MIUI TV firmware: the Settings and Wi-Fi pills fall back to Xiaomi's settings app. -->
         <package android:name="com.xiaomi.mitv.settings" />
-        <package android:name="com.google.android.apps.tv.launcherx" />
+        <package android:name="com.android.tv.settings" />
     </queries>
 
     <application
@@ -65,6 +73,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+            <!-- Native Android TV Quick Settings / Dashboard handler for long-press Home & settings keys -->
+            <intent-filter>
+                <action android:name="android.app.action.OPEN_NOTIFICATION_HANDLER_PANEL" />
+                <action android:name="android.app.action.TOGGLE_NOTIFICATION_HANDLER_PANEL" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
