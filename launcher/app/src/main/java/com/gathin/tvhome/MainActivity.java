@@ -887,10 +887,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 if (!info.isPassthroughInput() || info.getParentId() != null) continue;
                 final String id = info.getId();
                 int state = tim.getInputState(id);
-                boolean isConnected = state == TvInputManager.INPUT_STATE_CONNECTED
-                        || state == TvInputManager.INPUT_STATE_CONNECTED_STANDBY;
-                // User requirement: only show connected sources in the Sources menu.
-                if (!isConnected) continue;
+                // Strict check: only ports actively connected (state == 0).
+                // Ports in standby (state 1) or disconnected (state 2) are excluded.
+                if (state != TvInputManager.INPUT_STATE_CONNECTED) continue;
 
                 CharSequence l = info.loadLabel(this);
                 String portName = l == null ? id : l.toString().trim();
