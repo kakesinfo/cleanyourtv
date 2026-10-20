@@ -21,22 +21,12 @@ import android.graphics.drawable.ColorDrawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
-import android.net.NetworkRequest;
 import android.net.Uri;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-import android.text.SpannableString;
-import android.text.Spanned;
-import android.text.TextPaint;
-import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -212,10 +202,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 AnimationUtils.loadAnimation(this, enterAnim), enterDelay));
         grid.setAdapter(adapter);
 
-        // tvOS layout: push the dock row towards the bottom of the screen, leaving room for
-        // rows_below_dock grid rows under it; the rest of the grid stays below until you press Down.
+        // tvOS layout: push the dock row towards the bottom of the screen, right above "Autres applications".
         rowsBelowDock = cfg.rowsBelowDock;
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateGridPaddingTop());
+        btnOtherApps.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateGridPaddingTop());
 
         // Keep the glass glued to its tile while the grid scrolls.
         grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -350,8 +340,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         boolean hasOther = adapter.otherAppsCount() > 0;
         btnOtherApps.setVisibility(hasOther ? View.VISIBLE : View.GONE);
         btnOtherApps.setText(adapter.isShowingOtherApps()
-                ? "↑  " + getString(R.string.back_to_home)
-                : getString(R.string.other_apps) + "  ›");
+                ? "\u2191  " + getString(R.string.back_to_home)
+                : getString(R.string.other_apps) + "  \u203a");
     }
 
     private void updateGridPaddingTop() {
@@ -363,13 +353,23 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             // Item height follows the tile size, which follows the column count (AppAdapter.tileWidthPx).
             int inner = grid.getWidth() - grid.getPaddingLeft() - grid.getPaddingRight();
-            int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density)), density);
+            int tileH = AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density));
+            int itemH = AppAdapter.itemHeightPx(tileH, density);
             int gridRows = itemH * rowsBelowDock;
+            // Equal margin below "Autres applications" and between the dock bottom edge and "Autres applications".
+            int margin = (int) (16 * density);
+            int btnH = btnOtherApps != null && btnOtherApps.getHeight() > 0
+                    ? btnOtherApps.getHeight()
+                    : (int) (30 * density);
+            int bottomSpace = (btnOtherApps != null && btnOtherApps.getVisibility() == View.VISIBLE)
+                    ? (2 * margin + btnH)
+                    : margin;
             if (adapter.dockCount() > 0) {
-                int dockRow = itemH + (int) ((6 + 12) * density);   // item height plus DockDecoration offsets
-                want = Math.max(0, h - dockRow - gridRows - (int) (46 * density));
+                // Dock bottom in grid coordinates is at paddingTop + 6dp (DockDecoration top offset)
+                // + 8dp (item top padding) + tileH + 14dp (DockDecoration bottom pad) = paddingTop + tileH + 28dp.
+                want = Math.max(0, h - bottomSpace - gridRows - tileH - (int) (28 * density));
             } else {
-                want = Math.max(0, h - gridRows);
+                want = Math.max(0, h - bottomSpace - gridRows);
             }
         }
         if (grid.getPaddingTop() != want) {
@@ -581,7 +581,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         View item = (View) card.getParent();
         if (position < adapter.dockCount()) {
-            // Dock: park it at the bottom of the screen and show the top shelf for this app.
+            // Dock: park it at the bottom of the screen and show the ambient glow for this app.
             int decoratedTop = item.getTop() - (int) (6 * density);
             int dy = decoratedTop - grid.getPaddingTop();
             // A 1px mismatch used to start a scroll on every dock move. Only scroll when the row is
@@ -603,19 +603,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     // ---- top shelf -------------------------------------------------------------------------------
 
     private void showHero(int position, float dockTopInRoot) {
-        String label = adapter.labelAt(position);
         int color = adapter.ambientColorAt(position);
-        float y = dockTopInRoot - 14 * density - 26 * density - heroName.getHeight();
-        boolean changed = !label.contentEquals(heroName.getText());
+        heroName.setVisibility(View.GONE);
 
         if (reducedMotion) {
-            // Snap the shelf instead of sliding and fading it: each of those frames repaints the
-            // full-screen panel, and this switch exists for the GPUs that cannot afford it.
-            heroName.animate().cancel();
-            heroName.setText(label);
-            heroName.setY(y);
-            heroName.setTranslationX(0f);
-            heroName.setAlpha(1f);
             setAmbient(color);
             if (!heroShown) {
                 ambient.setAlpha(0f);
@@ -626,28 +617,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
 
         if (!heroShown) {
-            heroName.setText(label);
-            heroName.setY(y);
-            heroName.setTranslationX(0f);
-            heroName.animate().alpha(1f).setDuration(260).start();
             setAmbient(color);
             ambient.animate().alpha(1f).setDuration(600).start();
             heroShown = true;
-        } else if (changed) {
-            heroName.animate().alpha(0f).translationX(-12 * density).setDuration(120).withEndAction(() -> {
-                heroName.setText(label);
-                heroName.setY(y);
-                heroName.setTranslationX(12 * density);
-                heroName.animate().alpha(1f).translationX(0f).setDuration(200).start();
+        } else if (color != ambientColor) {
+            ambient.animate().alpha(0.35f).setDuration(200).withEndAction(() -> {
+                setAmbient(color);
+                ambient.animate().alpha(1f).setDuration(500).start();
             }).start();
-            if (color != ambientColor) {
-                ambient.animate().alpha(0.35f).setDuration(200).withEndAction(() -> {
-                    setAmbient(color);
-                    ambient.animate().alpha(1f).setDuration(500).start();
-                }).start();
-            }
-        } else {
-            heroName.setY(y);
         }
     }
 
@@ -680,7 +657,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private void hideHero() {
         if (!heroShown) return;
         heroShown = false;
-        heroName.animate().alpha(0f).setDuration(reducedMotion ? 100 : 160).start();
         ambient.animate().alpha(0f).setDuration(reducedMotion ? 140 : 300).start();
     }
 
@@ -806,7 +782,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /**
      * China-market MIUI TV firmware answers no standard Settings intents at all; open Xiaomi's own
-     * settings app (com.xiaomi.mitv.settings) there, so the Settings and Wi-Fi pills keep working.
+     * settings app (com.xiaomi.mitv.settings) there, so the Settings pill keeps working.
      * On firmware with a standard settings handler the behaviour is unchanged.
      */
     private Intent systemIntent(String standardAction) {

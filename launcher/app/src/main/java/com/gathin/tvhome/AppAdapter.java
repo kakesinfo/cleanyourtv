@@ -108,9 +108,9 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         return Math.round(tileWidthPx * DESIGN_H_DP / DESIGN_W_DP);
     }
 
-    /** Height of one grid item: the tile, the name label under it and the item's own padding. */
+    /** Height of one grid item: the tile and the item's own vertical padding. */
     static int itemHeightPx(int tileHeightPx, float density) {
-        return tileHeightPx + Math.round(45 * density);
+        return tileHeightPx + Math.round(16 * density);
     }
 
     /**
@@ -339,11 +339,6 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         cardLp.width = w;
         cardLp.height = h;
         card.setLayoutParams(cardLp);
-        View name = v.findViewById(R.id.name);
-        ViewGroup.MarginLayoutParams nameLp = (ViewGroup.MarginLayoutParams) name.getLayoutParams();
-        nameLp.width = w;
-        nameLp.topMargin = h + Math.round(7 * density);
-        name.setLayoutParams(nameLp);
         return new Holder(v, listener, reducedMotion, cellWidth);
     }
 
@@ -359,10 +354,8 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             itemLp.width = wantWidth;
             h.itemView.setLayoutParams(itemLp);
         }
-        h.name.setText(e.name);
-        h.name.setVisibility(inDock ? View.INVISIBLE : View.VISIBLE);   // the dock has no labels
+        h.name.setVisibility(View.GONE);
         boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
-        h.name.setAlpha(focused ? 1f : 0f);
         h.card.setScaleX(focused ? FOCUS_SCALE : 1f);
         h.card.setScaleY(focused ? FOCUS_SCALE : 1f);
         if (e.banner != null) {
@@ -531,7 +524,6 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             card.setOnFocusChangeListener((view, focused) -> {
                 float s = focused ? FOCUS_SCALE : 1.0f;
                 view.animate().cancel();
-                name.animate().cancel();
                 if (reducedMotion) {
                     // No overshoot: the extra frames redraw the banner and the dock band on a weak GPU.
                     view.animate().scaleX(s).scaleY(s)
@@ -539,16 +531,12 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
                             .setInterpolator(new DecelerateInterpolator())
                             .withLayer()
                             .start();
-                    name.animate().alpha(focused ? 1f : 0f).setDuration(100).start();
                 } else {
                     view.animate().scaleX(s).scaleY(s)
                             .setDuration(focused ? 260 : 180)
                             .setInterpolator(new OvershootInterpolator(focused ? 1.6f : 0f))
                             .withLayer()
                             .start();
-                    name.animate().alpha(focused ? 1f : 0f)
-                            .translationY(focused ? density * 4f : -density * 6f)
-                            .setDuration(220).start();
                 }
                 int pos = getBindingAdapterPosition();
                 if (focused && listener != null && pos != RecyclerView.NO_POSITION) {

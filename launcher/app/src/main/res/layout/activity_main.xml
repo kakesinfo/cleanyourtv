@@ -12,13 +12,14 @@
         android:layout_height="match_parent"
         android:alpha="0" />
 
-    <!-- Top shelf: the focused dock app's name, positioned above the dock in code. -->
+    <!-- Top shelf: hidden per user preference (no title on hover). -->
     <TextView
         android:id="@+id/heroName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="68dp"
         android:alpha="0"
+        android:visibility="gone"
         android:textColor="#FFFFFFFF"
         android:textSize="48sp"
         android:fontFamily="@font/outfit"
@@ -193,7 +194,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:paddingTop="10dp"
-                android:paddingBottom="48dp"
+                android:paddingBottom="16dp"
                 android:clipToPadding="false"
                 android:clipChildren="false"
                 android:overScrollMode="never"
@@ -205,7 +206,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
-                android:layout_marginBottom="10dp"
+                android:layout_marginBottom="16dp"
                 android:paddingStart="18dp"
                 android:paddingEnd="18dp"
                 android:paddingTop="6dp"
