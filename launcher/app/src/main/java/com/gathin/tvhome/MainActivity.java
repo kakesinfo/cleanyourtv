@@ -341,14 +341,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private void updateGridPaddingTop() {
         int h = grid.getHeight();
-        if (h <= 0) return;
+        int w = grid.getWidth();
+        if (h <= 0 || w <= 0) return;
+        int tileW = AppAdapter.tileWidthPx(w, COLUMNS, density);
+        int cellW = tileW + (int) (18 * density);
+        int hPad = Math.max(0, (w - COLUMNS * cellW) / 2);
         int want;
         if (adapter.isShowingOtherApps()) {
             want = (int) (18 * density);
         } else {
             // Item height follows the tile size, which follows the column count (AppAdapter.tileWidthPx).
-            int inner = grid.getWidth() - grid.getPaddingLeft() - grid.getPaddingRight();
-            int tileH = AppAdapter.tileHeightPx(AppAdapter.tileWidthPx(inner, COLUMNS, density));
+            int tileH = AppAdapter.tileHeightPx(tileW);
             int itemH = AppAdapter.itemHeightPx(tileH, density);
             int gridRows = itemH * rowsBelowDock;
             // Equal margin below "Autres applications" and between the dock bottom edge and "Autres applications".
@@ -361,14 +364,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     : margin;
             if (adapter.dockCount() > 0) {
                 // Dock bottom in grid coordinates is at paddingTop + 6dp (DockDecoration top offset)
-                // + 8dp (item top padding) + tileH + 14dp (DockDecoration bottom pad) = paddingTop + tileH + 28dp.
-                want = Math.max(0, h - bottomSpace - gridRows - tileH - (int) (28 * density));
+                // + 8dp (item top padding) + tileH + 10dp (DockDecoration bottom pad) = paddingTop + tileH + 24dp.
+                want = Math.max(0, h - bottomSpace - gridRows - tileH - (int) (24 * density));
             } else {
                 want = Math.max(0, h - bottomSpace - gridRows);
             }
         }
-        if (grid.getPaddingTop() != want) {
-            grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
+        if (grid.getPaddingTop() != want || grid.getPaddingLeft() != hPad || grid.getPaddingRight() != hPad) {
+            grid.setPadding(hPad, want, hPad, grid.getPaddingBottom());
         }
     }
 

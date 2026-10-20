@@ -70,7 +70,7 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
             }
         }
         if (!any) return;
-        float pad = 14 * density;
+        float pad = 10 * density;
         rect.inset(-pad, -pad);
         if (rect.top != lastTop || rect.bottom != lastBottom) {
             lastTop = rect.top;
@@ -79,7 +79,7 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
                     0, rect.top, 0, rect.bottom,
                     0x1AFFFFFF, 0x0CFFFFFF, Shader.TileMode.CLAMP));
         }
-        float radius = 26 * density;
+        float radius = 18 * density;
         c.drawRoundRect(rect, radius, radius, band);
         c.drawRoundRect(rect, radius, radius, edge);
     }
