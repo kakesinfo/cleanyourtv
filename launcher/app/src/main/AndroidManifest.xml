@@ -1,22 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-feature android:name="android.software.leanback" android:required="false" />
-    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-    <uses-feature android:name="android.hardware.wifi" android:required="false" />
-    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <!-- Leanback launcher capability and TV-only declaration. -->
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
 
+    <!-- Reads unbadged wallpapers from external storage, if the theme points there. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- Needed on Android 10 to read the Wi-Fi network name; granted over adb at install time. -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
-    <!-- Android 11+ package visibility: lets the launcher list the TV apps it shows as tiles, and the
+    <!-- Query all launcher-visible activities (TV apps, sideloaded mobile apps) and installed
          apps that declare a module card (docs/specs/card.md). -->
     <queries>
         <intent>
@@ -33,13 +40,19 @@
         </intent>
         <!-- Lateral settings intents -->
         <intent>
-            <action android:name="android.settings.PICTURE_STYLE" />
+            <action android:name="android.settings.PICTURE_ACTIVITY" />
         </intent>
         <intent>
-            <action android:name="android.settings.SPEAKERS_SETTINGS" />
+            <action android:name="android.settings.AUDIO_OUTPUT_SETTINGS" />
         </intent>
         <intent>
-            <action android:name="android.bluetooth.devicepicker.action.LAUNCH" />
+            <action android:name="com.google.android.intent.action.CONNECT_INPUT" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.WIFI_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
         </intent>
         <!-- China-market MIUI TV firmware: the Settings and Wi-Fi pills fall back to Xiaomi's settings app. -->
         <package android:name="com.xiaomi.mitv.settings" />
@@ -74,8 +87,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-            <!-- Native Android TV Quick Settings / Dashboard handler for long-press Home & settings keys -->
+        </activity>
+
+        <!-- Translucent overlay lateral Quick Settings activity -->
+        <activity
+            android:name=".QuickSettingsActivity"
+            android:theme="@style/Theme.TvHome.TranslucentQuickSettings"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:taskAffinity="com.gathin.tvhome.quicksettings"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|uiMode">
             <intent-filter>
+                <action android:name="com.gathin.tvhome.action.QUICK_SETTINGS" />
                 <action android:name="android.app.action.OPEN_NOTIFICATION_HANDLER_PANEL" />
                 <action android:name="android.app.action.TOGGLE_NOTIFICATION_HANDLER_PANEL" />
                 <category android:name="android.intent.category.DEFAULT" />

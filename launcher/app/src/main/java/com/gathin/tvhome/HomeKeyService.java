@@ -12,8 +12,8 @@ import android.view.accessibility.AccessibilityEvent;
 /**
  * Handles remote Home and Quick Settings keys.
  * Short-press Home -> returns to clean tvhome launcher.
- * Long-press Home -> opens custom lateral Quick Settings panel.
- * Quick Settings key -> opens custom lateral Quick Settings panel.
+ * Long-press Home -> opens custom translucent lateral Quick Settings panel over current app.
+ * Quick Settings key -> opens custom translucent lateral Quick Settings panel over current app.
  * Redirects stock Google TV home screen to tvhome immediately on boot and navigation.
  */
 public class HomeKeyService extends AccessibilityService {
@@ -88,9 +88,9 @@ public class HomeKeyService extends AccessibilityService {
     }
 
     private void openQuickSettingsPanel() {
-        Intent panel = new Intent(this, MainActivity.class)
+        Intent panel = new Intent(this, QuickSettingsActivity.class)
                 .setAction("com.gathin.tvhome.action.QUICK_SETTINGS")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(panel);
     }
 

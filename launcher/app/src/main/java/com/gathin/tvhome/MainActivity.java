@@ -242,7 +242,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         btnInputs.setOnClickListener(v -> showInputs());
 
-        btnSettings.setOnClickListener(v -> showQuickSettings());
+        btnSettings.setOnClickListener(v -> startActivity(new Intent(this, QuickSettingsActivity.class)));
         btnSettings.setOnLongClickListener(v -> {
             if (moduleCards && !cards.isEmpty() && CardFeature.working()) {
                 showModuleCards();
@@ -726,89 +726,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if ("com.gathin.tvhome.action.QUICK_SETTINGS".equals(action)
                     || "android.app.action.OPEN_NOTIFICATION_HANDLER_PANEL".equals(action)
                     || "android.app.action.TOGGLE_NOTIFICATION_HANDLER_PANEL".equals(action)) {
-                root.postDelayed(this::showQuickSettings, 100);
+                startActivity(new Intent(this, QuickSettingsActivity.class));
             }
         }
     }
-
-    /** Custom Apple TV style lateral right-side Quick Settings popup. */
-    private void showQuickSettings() {
-        if (openPopup != null) {
-            openPopup.dismiss();
-            openPopup = null;
-        }
-
-        View anchor = findViewById(R.id.btnSettings);
-        View panel = getLayoutInflater().inflate(R.layout.popup_quicksettings, root, false);
-        LinearLayout rows = panel.findViewById(R.id.rows);
-
-        int width = (int) (320 * density);
-        final PopupWindow popup = glassPopup(panel, width);
-
-        // 1. Image (Dolby Vision, HDR, Style d'image)
-        addQuickSettingRow(rows, R.drawable.ic_picture, R.string.qs_picture_title, R.string.qs_picture_desc, () -> {
-            popup.dismiss();
-            open(new Intent("android.settings.PICTURE_STYLE"));
-        });
-
-        // 2. Sortie Audio (eARC, Haut-parleurs)
-        addQuickSettingRow(rows, R.drawable.ic_audio, R.string.qs_audio_title, R.string.qs_audio_desc, () -> {
-            popup.dismiss();
-            open(new Intent("android.settings.SPEAKERS_SETTINGS"));
-        });
-
-        // 3. Réseau et Wi-Fi
-        addQuickSettingRow(rows, R.drawable.ic_wifi, R.string.qs_wifi_title, R.string.qs_wifi_desc, () -> {
-            popup.dismiss();
-            open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
-        });
-
-        // 4. Bluetooth et Accessoires
-        addQuickSettingRow(rows, R.drawable.ic_bluetooth, R.string.qs_bluetooth_title, R.string.qs_bluetooth_desc, () -> {
-            popup.dismiss();
-            Intent btIntent = new Intent("android.bluetooth.devicepicker.action.LAUNCH");
-            if (btIntent.resolveActivity(getPackageManager()) != null) {
-                open(btIntent);
-            } else {
-                Intent slice = new Intent("android.settings.SLICE_SETTINGS")
-                        .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/general");
-                open(slice);
-            }
-        });
-
-        // 5. Tous les Réglages
-        addQuickSettingRow(rows, R.drawable.ic_settings, R.string.qs_settings_title, R.string.qs_settings_desc, () -> {
-            popup.dismiss();
-            open(systemIntent(Settings.ACTION_SETTINGS));
-        });
-
-        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
-        int finalWidth = Math.max(width, panel.getMeasuredWidth());
-        popup.setWidth(finalWidth);
-
-        // Align right edge under anchor button
-        int xOffset = anchor.getWidth() - finalWidth;
-        dropIn(popup, panel, anchor, xOffset, (int) (10 * density));
-        if (rows.getChildCount() > 0) {
-            rows.getChildAt(0).requestFocus();
-        }
-    }
-
-    private void addQuickSettingRow(LinearLayout container, int iconRes, int titleRes, int descRes, Runnable action) {
-        View row = getLayoutInflater().inflate(R.layout.item_input, container, false);
-        ImageView icon = row.findViewById(R.id.icon);
-        TextView title = row.findViewById(R.id.title);
-        TextView subtitle = row.findViewById(R.id.subtitle);
-
-        icon.setImageResource(iconRes);
-        title.setText(titleRes);
-        subtitle.setText(descRes);
-        subtitle.setVisibility(View.VISIBLE);
-
-        row.setOnClickListener(v -> action.run());
-        container.addView(row);
-    }
-
 
     /**
      * China-market MIUI TV firmware answers no standard Settings intents at all; open Xiaomi's own
