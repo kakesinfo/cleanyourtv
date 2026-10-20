@@ -344,34 +344,29 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int w = grid.getWidth();
         if (h <= 0 || w <= 0) return;
         int tileW = AppAdapter.tileWidthPx(w, COLUMNS, density);
+        int tileH = AppAdapter.tileHeightPx(tileW);
+        int itemH = AppAdapter.itemHeightPx(tileH, density);
         int cellW = tileW + (int) (18 * density);
         int hPad = Math.max(0, (w - COLUMNS * cellW) / 2);
         int want;
+        int bPad;
         if (adapter.isShowingOtherApps()) {
-            want = (int) (18 * density);
+            want = (int) (24 * density);
+            bPad = Math.max((int) (32 * density), (h - itemH) / 2);
         } else {
-            // Item height follows the tile size, which follows the column count (AppAdapter.tileWidthPx).
-            int tileH = AppAdapter.tileHeightPx(tileW);
-            int itemH = AppAdapter.itemHeightPx(tileH, density);
             int gridRows = itemH * rowsBelowDock;
-            // Equal margin below "Autres applications" and between the dock bottom edge and "Autres applications".
-            int margin = (int) (16 * density);
-            int btnH = btnOtherApps != null && btnOtherApps.getHeight() > 0
-                    ? btnOtherApps.getHeight()
-                    : (int) (30 * density);
-            int bottomSpace = (btnOtherApps != null && btnOtherApps.getVisibility() == View.VISIBLE)
-                    ? (2 * margin + btnH)
-                    : margin;
             if (adapter.dockCount() > 0) {
                 // Dock bottom in grid coordinates is at paddingTop + 6dp (DockDecoration top offset)
                 // + 8dp (item top padding) + tileH + 10dp (DockDecoration bottom pad) = paddingTop + tileH + 24dp.
-                want = Math.max(0, h - bottomSpace - gridRows - tileH - (int) (24 * density));
+                want = Math.max(0, h - gridRows - tileH - (int) (24 * density));
             } else {
-                want = Math.max(0, h - bottomSpace - gridRows);
+                want = Math.max(0, h - gridRows);
             }
+            bPad = (int) (10 * density);
         }
-        if (grid.getPaddingTop() != want || grid.getPaddingLeft() != hPad || grid.getPaddingRight() != hPad) {
-            grid.setPadding(hPad, want, hPad, grid.getPaddingBottom());
+        if (grid.getPaddingTop() != want || grid.getPaddingBottom() != bPad
+                || grid.getPaddingLeft() != hPad || grid.getPaddingRight() != hPad) {
+            grid.setPadding(hPad, want, hPad, bPad);
         }
     }
 
@@ -597,9 +592,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             showHero(position, scroll ? r.top - dy : r.top);
         } else {
             hideHero();
-            // Scroll just enough so the whole glass (not only the tile) is visible.
-            Rect want = new Rect(0, -(int) pad * 2, item.getWidth(), item.getHeight() + (int) pad);
-            grid.requestChildRectangleOnScreen(item, want, reducedMotion);
+            if (adapter.isShowingOtherApps()) {
+                // Keep the focused row near the vertical center of the drawer.
+                int itemCenterY = (item.getTop() + item.getBottom()) / 2;
+                int dy = itemCenterY - grid.getHeight() / 2;
+                if (Math.abs(dy) > (int) (6 * density)) {
+                    if (reducedMotion) grid.scrollBy(0, dy);
+                    else grid.smoothScrollBy(0, dy);
+                }
+            } else {
+                // Scroll just enough so the whole glass (not only the tile) is visible.
+                Rect want = new Rect(0, -(int) pad * 2, item.getWidth(), item.getHeight() + (int) pad);
+                grid.requestChildRectangleOnScreen(item, want, reducedMotion);
+            }
         }
     }
 

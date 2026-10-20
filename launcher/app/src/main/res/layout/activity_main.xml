@@ -195,27 +195,28 @@
                 android:overScrollMode="never"
                 android:scrollbars="none"
                 android:descendantFocusability="afterDescendants" />
-
-            <TextView
-                android:id="@+id/btnOtherApps"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="bottom|center_horizontal"
-                android:layout_marginBottom="16dp"
-                android:paddingStart="18dp"
-                android:paddingEnd="18dp"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp"
-                android:background="@null"
-                android:text="@string/other_apps"
-                android:textColor="@drawable/other_apps_text"
-                android:textSize="13sp"
-                android:fontFamily="@font/outfit"
-                android:fontVariationSettings="'wght' 500"
-                android:letterSpacing="0.06"
-                android:focusable="true"
-                android:clickable="true" />
         </FrameLayout>
+
+        <TextView
+            android:id="@+id/btnOtherApps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:paddingStart="18dp"
+            android:paddingEnd="18dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:background="@null"
+            android:text="@string/other_apps"
+            android:textColor="@drawable/other_apps_text"
+            android:textSize="13sp"
+            android:fontFamily="@font/outfit"
+            android:fontVariationSettings="'wght' 500"
+            android:letterSpacing="0.06"
+            android:focusable="true"
+            android:clickable="true" />
     </LinearLayout>
 
     <!-- The single floating glass highlight that springs between tiles. -->
