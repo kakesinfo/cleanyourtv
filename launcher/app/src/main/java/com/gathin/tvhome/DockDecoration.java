@@ -1,15 +1,17 @@
 package com.gathin.tvhome;
 
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-/** Draws the tvOS style lighter band behind the first (dock) row and adds a gap below it. */
+/** Draws the tvOS style translucent frosted band behind the first (dock) row and adds a gap below it. */
 public class DockDecoration extends RecyclerView.ItemDecoration {
 
     private final AppAdapter adapter;
@@ -18,15 +20,16 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
     private final Paint band = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
+    private float lastTop = Float.NaN;
+    private float lastBottom = Float.NaN;
 
     DockDecoration(AppAdapter adapter, int maxDockSize, float density) {
         this.adapter = adapter;
         this.maxDockSize = maxDockSize;
         this.density = density;
-        band.setColor(0xFF141416);
         edge.setStyle(Paint.Style.STROKE);
         edge.setStrokeWidth(density);
-        edge.setColor(0x1FFFFFFF);
+        edge.setColor(0x24FFFFFF);
     }
 
     private int activeDockSize() {
@@ -69,6 +72,13 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         if (!any) return;
         float pad = 14 * density;
         rect.inset(-pad, -pad);
+        if (rect.top != lastTop || rect.bottom != lastBottom) {
+            lastTop = rect.top;
+            lastBottom = rect.bottom;
+            band.setShader(new LinearGradient(
+                    0, rect.top, 0, rect.bottom,
+                    0x1AFFFFFF, 0x0CFFFFFF, Shader.TileMode.CLAMP));
+        }
         float radius = 26 * density;
         c.drawRoundRect(rect, radius, radius, band);
         c.drawRoundRect(rect, radius, radius, edge);
