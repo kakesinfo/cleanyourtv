@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityEvent;
@@ -17,8 +18,10 @@ import java.lang.reflect.Method;
  * Short-press Home -> returns to clean tvhome launcher.
  * Long-press Home -> opens lateral right-side Quick Settings panel.
  * Quick Settings key -> opens lateral right-side Quick Settings panel.
+ * Redirects stock Google TV home screen to tvhome immediately on boot and navigation.
  */
 public class HomeKeyService extends AccessibilityService {
+    private static final String TAG = "HomeKeyService";
 
     /** Scancodes of remote buttons that should open Settings (config.xml, settings_key_scancodes). */
     private int[] settingsScancodes = new int[0];
@@ -37,6 +40,14 @@ public class HomeKeyService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         settingsScancodes = getResources().getIntArray(R.array.settings_key_scancodes);
+        Log.i(TAG, "HomeKeyService connected, ensuring clean home is displayed");
+        openHome();
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                openHome();
+            }
+        }, 1000);
     }
 
     private boolean isSettingsKey(KeyEvent event) {
@@ -120,19 +131,21 @@ public class HomeKeyService extends AccessibilityService {
 
     private void openHome() {
         Intent home = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(home);
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        int eventType = event.getEventType();
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                || eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
             CharSequence pkg = event.getPackageName();
             CharSequence cls = event.getClassName();
             if (pkg != null && "com.google.android.apps.tv.launcherx".contentEquals(pkg)) {
-                // If stock HomeActivity is attempting to display, redirect to our launcher.
-                // Do NOT redirect when DashboardHandler (Quick Settings panel) is opening.
-                if (cls != null && cls.toString().contains("HomeActivity")) {
+                // If stock HomeActivity or any other launcherx activity (except Dashboard / Quick Settings panel) appears, redirect
+                if (cls == null || (!cls.toString().contains("Dashboard") && !cls.toString().contains("Notification"))) {
+                    Log.i(TAG, "Stock Google TV home activity detected (" + cls + "), redirecting to clean home");
                     openHome();
                 }
             }
