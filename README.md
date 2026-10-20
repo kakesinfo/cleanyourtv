@@ -4,6 +4,8 @@
 # CleanYourTV
 A lightweight, ad-free custom Google TV launcher and debloat toolkit tailored for my personal setup.
 
+<img src="screenshot.png" alt="CleanYourTV" width="800" style="max-width: 100%;">
+
 ### 🚀 Features
 
  - Debloat Google TV over ADB without root or uninstalling system packages.
@@ -11,6 +13,8 @@ A lightweight, ad-free custom Google TV launcher and debloat toolkit tailored fo
  - Custom dock with favorite apps and a dedicated "Other applications" drawer.
  - Dynamic Jellyfin background backdrop carousel showcasing the latest movies and series available.
  - Direct access to the Quick Settings panel and TV Inputs menu.
+ - Right-side Quick Settings panel replacing the stock LauncherX menu.
+ - Screensaver with Jellyfin backdrop carousel.
 
 ### 🧩 Contributing
 
