@@ -118,6 +118,17 @@ esac
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
 
+# Fallback to a full JDK 17 or 21 when JAVA_HOME is not set (Gradle 8.9 does not support JDK 25+).
+if [ -z "$JAVA_HOME" ] ; then
+    for candidate in /usr/lib/jvm/java-17-openjdk-amd64 /usr/lib/jvm/java-21-openjdk-amd64 "$HOME"/.jdks/temurin-21* ; do
+        if [ -x "$candidate/bin/javac" ] && [ -x "$candidate/bin/jlink" ] ; then
+            JAVA_HOME="$candidate"
+            export JAVA_HOME
+            break
+        fi
+    done
+fi
+
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
