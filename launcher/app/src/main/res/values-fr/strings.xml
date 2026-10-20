@@ -24,13 +24,8 @@
     <string name="back_to_home">Accueil</string>
     <string name="quick_settings_title">Réglages rapides</string>
     <string name="qs_picture_title">Image</string>
-    <string name="qs_picture_desc">Dolby Vision, styles d\'image, calibrage</string>
     <string name="qs_audio_title">Sortie Audio</string>
-    <string name="qs_audio_desc">Sortie son, eARC, format audio</string>
-    <string name="qs_wifi_title">Réseau et Wi-Fi</string>
-    <string name="qs_wifi_desc">Connexion sans fil, Ethernet</string>
-    <string name="qs_bluetooth_title">Bluetooth et Accessoires</string>
-    <string name="qs_bluetooth_desc">Télécommandes, casques, manettes</string>
-    <string name="qs_settings_title">Tous les Réglages</string>
-    <string name="qs_settings_desc">Paramètres généraux du système</string>
+    <string name="qs_wifi_title">Wifi</string>
+    <string name="qs_bluetooth_title">Bluetooth</string>
+    <string name="qs_settings_title">Paramètres</string>
 </resources>

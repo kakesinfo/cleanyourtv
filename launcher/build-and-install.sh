@@ -71,6 +71,9 @@ case "$OUT" in
 esac
 printf '%s\n' \
   "pm grant com.gathin.tvhome android.permission.ACCESS_FINE_LOCATION 2>/dev/null; echo location-granted" \
+  "pm grant com.gathin.tvhome android.permission.WRITE_SECURE_SETTINGS 2>/dev/null; echo secure-settings-granted" \
+  "pm grant com.gathin.tvhome android.permission.BLUETOOTH_CONNECT 2>/dev/null; echo bt-connect-granted" \
+  "pm grant com.gathin.tvhome android.permission.BLUETOOTH_SCAN 2>/dev/null; echo bt-scan-granted" \
   "cmd package compile -m speed -f com.gathin.tvhome" \
   "am start -W -n com.gathin.tvhome/.MainActivity | grep -E '^(Status|Error)'" \
   "$DISABLE_STOCK" \

@@ -40,17 +40,19 @@ public class QuickSettingsActivity extends Activity {
             launchSettingIntent("android.settings.AUDIO_OUTPUT_SETTINGS");
         });
 
-        // 3. Réseau et Wi-Fi
+        // 3. Wifi
         setupRow(findViewById(R.id.row_wifi), () -> {
             launchSettingIntent("android.settings.WIFI_SETTINGS");
         });
 
-        // 4. Bluetooth et Accessoires (Télécommandes, manettes, casques)
+        // 4. Bluetooth (List of paired devices, accessories & remote settings)
         setupRow(findViewById(R.id.row_bluetooth), () -> {
-            launchSettingIntent("com.google.android.intent.action.CONNECT_INPUT");
+            Intent btIntent = new Intent("android.settings.SLICE_SETTINGS")
+                    .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/general");
+            launchSettingIntent(btIntent);
         });
 
-        // 5. Tous les Réglages globaux
+        // 5. Paramètres globaux
         setupRow(findViewById(R.id.row_settings), () -> {
             launchSettingIntent("android.settings.SETTINGS");
         });
@@ -63,23 +65,19 @@ public class QuickSettingsActivity extends Activity {
 
     private void setupRow(View row, Runnable action) {
         if (row == null) return;
-        row.setOnFocusChangeListener((v, hasFocus) -> {
-            v.animate()
-                    .scaleX(hasFocus ? 1.02f : 1.0f)
-                    .scaleY(hasFocus ? 1.02f : 1.0f)
-                    .setDuration(140)
-                    .start();
-        });
         row.setOnClickListener(v -> action.run());
     }
 
     private void launchSettingIntent(String action) {
+        launchSettingIntent(new Intent(action));
+    }
+
+    private void launchSettingIntent(Intent intent) {
         try {
-            Intent intent = new Intent(action);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             startActivity(intent);
         } catch (Exception e) {
-            Log.e(TAG, "Could not launch setting action: " + action, e);
+            Log.e(TAG, "Could not launch setting intent: " + intent, e);
         }
         finish();
         overridePendingTransition(0, 0);
@@ -97,9 +95,21 @@ public class QuickSettingsActivity extends Activity {
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             int keyCode = event.getKeyCode();
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_BACK) {
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
                 finishWithSlide();
                 return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                View current = getCurrentFocus();
+                if (current == null
+                        || current.getId() == R.id.row_picture
+                        || current.getId() == R.id.row_wifi
+                        || current.getId() == R.id.row_settings) {
+                    finishWithSlide();
+                    return true;
+                }
+                // When on right column, let D-pad move focus to the left column
+                return super.dispatchKeyEvent(event);
             }
             if (isSettingsKey(event)) {
                 finishWithSlide();
