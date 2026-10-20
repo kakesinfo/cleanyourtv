@@ -30,6 +30,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -38,17 +39,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Fetches the 10 latest movies and 10 latest series (sorted by release date, PremiereDate descending)
+ * Fetches the latest movies and series (sorted by release date, PremiereDate descending)
  * from a Jellyfin server, caches their backdrop images on disk, darkens them with a cinematic vignette
  * for home-screen legibility, and crossfades them in the background.
  */
 final class JellyfinCarousel {
     private static final String TAG = "TvHome.Jellyfin";
-    private static final long ROTATE_INTERVAL_MS = 10_000L;
     private static final long REFRESH_INTERVAL_MS = 15 * 60_000L;
     private static final int CONNECT_TIMEOUT_MS = 6_000;
     private static final int READ_TIMEOUT_MS = 12_000;
-    private static final int LIMIT_PER_TYPE = 10;
 
     private final Context ctx;
     private final ImageView viewA;
@@ -63,6 +62,9 @@ final class JellyfinCarousel {
 
     private String serverUrl = "";
     private String apiKey = "";
+    private long rotateIntervalMs = 10_000L;
+    private int moviesCount = 10;
+    private int seriesCount = 10;
     private boolean reducedMotion = false;
     private boolean running = false;
     private boolean showingA = true;
@@ -77,7 +79,7 @@ final class JellyfinCarousel {
         public void run() {
             if (!running) return;
             showNext();
-            mainHandler.postDelayed(this, ROTATE_INTERVAL_MS);
+            mainHandler.postDelayed(this, rotateIntervalMs);
         }
     };
 
@@ -87,13 +89,22 @@ final class JellyfinCarousel {
         this.viewB = viewB;
     }
 
-    void configure(String url, String key, boolean reducedMotion) {
-        String cleanUrl = normalizeUrl(url);
-        String cleanKey = key != null ? key.trim() : "";
-        boolean changed = !cleanUrl.equals(this.serverUrl) || !cleanKey.equals(this.apiKey);
+    void configure(Config cfg) {
+        String cleanUrl = normalizeUrl(cfg.jellyfinUrl);
+        String cleanKey = cfg.jellyfinApiKey != null ? cfg.jellyfinApiKey.trim() : "";
+        long wantIntervalMs = Math.max(2, cfg.jellyfinCarouselIntervalSeconds) * 1000L;
+        int wantMovies = Math.max(0, cfg.jellyfinMoviesCount);
+        int wantSeries = Math.max(0, cfg.jellyfinSeriesCount);
+        boolean changed = !cleanUrl.equals(this.serverUrl)
+                || !cleanKey.equals(this.apiKey)
+                || wantMovies != this.moviesCount
+                || wantSeries != this.seriesCount;
         this.serverUrl = cleanUrl;
         this.apiKey = cleanKey;
-        this.reducedMotion = reducedMotion;
+        this.rotateIntervalMs = wantIntervalMs;
+        this.moviesCount = wantMovies;
+        this.seriesCount = wantSeries;
+        this.reducedMotion = cfg.reducedMotion;
         if (changed) {
             lastSyncElapsed = 0L;
             if (running && !cleanKey.isEmpty()) {
@@ -122,7 +133,7 @@ final class JellyfinCarousel {
                         backdropFiles.addAll(cached);
                         showNext();
                         mainHandler.removeCallbacks(rotateRunnable);
-                        mainHandler.postDelayed(rotateRunnable, ROTATE_INTERVAL_MS);
+                        mainHandler.postDelayed(rotateRunnable, rotateIntervalMs);
                     }
                 });
             }
@@ -133,7 +144,7 @@ final class JellyfinCarousel {
         });
         if (!backdropFiles.isEmpty()) {
             mainHandler.removeCallbacks(rotateRunnable);
-            mainHandler.postDelayed(rotateRunnable, ROTATE_INTERVAL_MS);
+            mainHandler.postDelayed(rotateRunnable, rotateIntervalMs);
         }
     }
 
@@ -218,13 +229,21 @@ final class JellyfinCarousel {
             }
             Log.i(TAG, "Syncing backdrops from " + baseUrl);
 
-            List<BackdropRef> movies = fetchLatestByReleaseDate(baseUrl, apiKey, null, "Movie", LIMIT_PER_TYPE);
-            List<BackdropRef> series = fetchLatestByReleaseDate(baseUrl, apiKey, null, "Series", LIMIT_PER_TYPE);
+            List<BackdropRef> movies = moviesCount > 0
+                    ? fetchLatestByReleaseDate(baseUrl, apiKey, null, "Movie", moviesCount)
+                    : Collections.emptyList();
+            List<BackdropRef> series = seriesCount > 0
+                    ? fetchLatestByReleaseDate(baseUrl, apiKey, null, "Series", seriesCount)
+                    : Collections.emptyList();
             if (movies.isEmpty() && series.isEmpty()) {
                 String userId = fetchFirstUserId(baseUrl, apiKey);
                 if (userId != null) {
-                    movies = fetchLatestByReleaseDate(baseUrl, apiKey, userId, "Movie", LIMIT_PER_TYPE);
-                    series = fetchLatestByReleaseDate(baseUrl, apiKey, userId, "Series", LIMIT_PER_TYPE);
+                    if (moviesCount > 0) {
+                        movies = fetchLatestByReleaseDate(baseUrl, apiKey, userId, "Movie", moviesCount);
+                    }
+                    if (seriesCount > 0) {
+                        series = fetchLatestByReleaseDate(baseUrl, apiKey, userId, "Series", seriesCount);
+                    }
                 }
             }
 
@@ -246,7 +265,7 @@ final class JellyfinCarousel {
                     if (!ok) continue;
                 }
                 downloaded.add(target);
-                // Show the very first backdrop immediately without waiting for the remaining 19 to download.
+                // Show the very first backdrop immediately without waiting for the remaining items to download.
                 if (downloaded.size() == 1) {
                     final File firstFile = target;
                     mainHandler.post(() -> {
@@ -255,7 +274,7 @@ final class JellyfinCarousel {
                             if (running) {
                                 showNext();
                                 mainHandler.removeCallbacks(rotateRunnable);
-                                mainHandler.postDelayed(rotateRunnable, ROTATE_INTERVAL_MS);
+                                mainHandler.postDelayed(rotateRunnable, rotateIntervalMs);
                             }
                         }
                     });
@@ -264,7 +283,7 @@ final class JellyfinCarousel {
 
             if (downloaded.isEmpty()) return;
 
-            // Remove stale cached backdrops no longer in the top 20.
+            // Remove stale cached backdrops no longer in the active list.
             File[] existing = dir.listFiles();
             if (existing != null) {
                 for (File f : existing) {
@@ -285,7 +304,7 @@ final class JellyfinCarousel {
                 if (running && wasEmpty) {
                     showNext();
                     mainHandler.removeCallbacks(rotateRunnable);
-                    mainHandler.postDelayed(rotateRunnable, ROTATE_INTERVAL_MS);
+                    mainHandler.postDelayed(rotateRunnable, rotateIntervalMs);
                 }
             });
         } catch (Exception e) {

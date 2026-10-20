@@ -159,7 +159,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         ImageView backdropA = findViewById(R.id.backdropA);
         ImageView backdropB = findViewById(R.id.backdropB);
         jellyfinCarousel = new JellyfinCarousel(this, backdropA, backdropB);
-        jellyfinCarousel.configure(cfg.jellyfinUrl, cfg.jellyfinApiKey, reducedMotion);
+        jellyfinCarousel.configure(cfg);
         heroName = findViewById(R.id.heroName);
         greeting = findViewById(R.id.greeting);
         btnOtherApps = findViewById(R.id.btnOtherApps);
@@ -407,7 +407,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         Config cfg = Config.load(this);
-        jellyfinCarousel.configure(cfg.jellyfinUrl, cfg.jellyfinApiKey, cfg.reducedMotion);
+        jellyfinCarousel.configure(cfg);
         jellyfinCarousel.start();
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
         adapter.setShowingOtherApps(false);
@@ -429,7 +429,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             registerReceiver(packageReceiver, packageFilter);
         }
         Config cfg = Config.load(this);
-        jellyfinCarousel.configure(cfg.jellyfinUrl, cfg.jellyfinApiKey, cfg.reducedMotion);
+        jellyfinCarousel.configure(cfg);
         jellyfinCarousel.start();
         tilesReady = false;
         promptsPaused = false;

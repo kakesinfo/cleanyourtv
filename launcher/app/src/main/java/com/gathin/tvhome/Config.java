@@ -18,13 +18,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * The launcher's settings: the values in res/values/config.xml, with an optional overlay read from
- * {@code config.json} in the app's external files directory
- * ({@code /sdcard/Android/data/com.gathin.tvhome/files/}). Every key in the JSON is optional and an
- * unknown or badly typed key is ignored, so a theme can change the dock and the look without a rebuild:
- * {@code tools/theme.sh themes/<name>} pushes a theme folder there and restarts Home.
- *
- * Read once in {@link MainActivity#onCreate}; nothing here touches the network.
+ * The launcher's settings: the values in res/values/config.xml and res/values/jellyfin.xml (plus
+ * credentials injected from .env at build time), with an optional overlay read from {@code config.json}
+ * in the app's external files directory ({@code /sdcard/Android/data/com.gathin.tvhome/files/}).
  */
 final class Config {
     private static final String TAG = "TvHome.Config";
@@ -50,10 +46,16 @@ final class Config {
     final int backgroundColor;
     /** Full-screen picture behind the launcher, or null for the plain colour. */
     final File wallpaper;
-    /** Optional Jellyfin server URL (e.g. "http://192.168.1.50:8096") for the backdrop carousel. */
+    /** Jellyfin server URL injected from .env (JELLYFIN_URL) or config.json. */
     final String jellyfinUrl;
-    /** Optional Jellyfin API key (Dashboard -> API Keys) for the backdrop carousel. */
+    /** Jellyfin API key injected from .env (JELLYFIN_API_KEY) or config.json. */
     final String jellyfinApiKey;
+    /** Rotation interval in seconds between two backdrops (res/values/jellyfin.xml). */
+    final int jellyfinCarouselIntervalSeconds;
+    /** Number of recent movies to fetch from Jellyfin (res/values/jellyfin.xml). */
+    final int jellyfinMoviesCount;
+    /** Number of recent series to fetch from Jellyfin (res/values/jellyfin.xml). */
+    final int jellyfinSeriesCount;
     /** Whether the overlay file was present and parsed. */
     final boolean overlayApplied;
 
@@ -62,7 +64,9 @@ final class Config {
                    int columns, int rowsBelowDock,
                    boolean shamsiDate, boolean moduleCards, boolean reducedMotion, String vpnApp,
                    boolean showHomeSettingsShortcut, int backgroundColor,
-                   File wallpaper, String jellyfinUrl, String jellyfinApiKey, boolean overlayApplied) {
+                   File wallpaper, String jellyfinUrl, String jellyfinApiKey,
+                   int jellyfinCarouselIntervalSeconds, int jellyfinMoviesCount, int jellyfinSeriesCount,
+                   boolean overlayApplied) {
         this.dockApps = Collections.unmodifiableList(dockApps);
         this.hiddenApps = Collections.unmodifiableList(hiddenApps);
         this.liveTvPackage = liveTvPackage;
@@ -81,6 +85,9 @@ final class Config {
         this.wallpaper = wallpaper;
         this.jellyfinUrl = jellyfinUrl;
         this.jellyfinApiKey = jellyfinApiKey;
+        this.jellyfinCarouselIntervalSeconds = jellyfinCarouselIntervalSeconds;
+        this.jellyfinMoviesCount = jellyfinMoviesCount;
+        this.jellyfinSeriesCount = jellyfinSeriesCount;
         this.overlayApplied = overlayApplied;
     }
 
@@ -107,6 +114,9 @@ final class Config {
         boolean homeSettings = res.getBoolean(R.bool.show_home_settings_shortcut);
         String jellyfinUrl = res.getString(R.string.jellyfin_url).trim();
         String jellyfinApiKey = res.getString(R.string.jellyfin_api_key).trim();
+        int carouselInterval = res.getInteger(R.integer.jellyfin_carousel_interval_seconds);
+        int moviesCount = res.getInteger(R.integer.jellyfin_movies_count);
+        int seriesCount = res.getInteger(R.integer.jellyfin_series_count);
         int background = 0xFF000000;
         boolean applied = false;
 
@@ -132,6 +142,9 @@ final class Config {
             background = color(json, "background_color", background);
             jellyfinUrl = string(json, "jellyfin_url", jellyfinUrl);
             jellyfinApiKey = string(json, "jellyfin_api_key", jellyfinApiKey);
+            carouselInterval = integer(json, "jellyfin_carousel_interval_seconds", carouselInterval, 2, 300);
+            moviesCount = integer(json, "jellyfin_movies_count", moviesCount, 0, 50);
+            seriesCount = integer(json, "jellyfin_series_count", seriesCount, 0, 50);
         }
         File wallpaper = dir != null ? new File(dir, WALLPAPER_NAME) : null;
         if (wallpaper != null && !(wallpaper.isFile() && wallpaper.length() > 0)) wallpaper = null;
@@ -140,7 +153,9 @@ final class Config {
 
         return new Config(dock, hidden, liveTv, liveTvAction, panelService, panelAction, inputAction,
                 Math.max(1, columns), Math.max(0, rowsBelow), shamsi, moduleCards, reducedMotion,
-                vpn, homeSettings, background, wallpaper, jellyfinUrl, jellyfinApiKey, applied);
+                vpn, homeSettings, background, wallpaper, jellyfinUrl, jellyfinApiKey,
+                Math.max(2, carouselInterval), Math.max(0, moviesCount), Math.max(0, seriesCount),
+                applied);
     }
 
     /** Reads and parses the overlay; any problem means "no overlay", never a crash on the home screen. */
