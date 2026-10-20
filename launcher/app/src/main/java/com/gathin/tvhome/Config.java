@@ -50,6 +50,10 @@ final class Config {
     final int backgroundColor;
     /** Full-screen picture behind the launcher, or null for the plain colour. */
     final File wallpaper;
+    /** Optional Jellyfin server URL (e.g. "http://192.168.1.50:8096") for the backdrop carousel. */
+    final String jellyfinUrl;
+    /** Optional Jellyfin API key (Dashboard -> API Keys) for the backdrop carousel. */
+    final String jellyfinApiKey;
     /** Whether the overlay file was present and parsed. */
     final boolean overlayApplied;
 
@@ -58,7 +62,7 @@ final class Config {
                    int columns, int rowsBelowDock,
                    boolean shamsiDate, boolean moduleCards, boolean reducedMotion, String vpnApp,
                    boolean showHomeSettingsShortcut, int backgroundColor,
-                   File wallpaper, boolean overlayApplied) {
+                   File wallpaper, String jellyfinUrl, String jellyfinApiKey, boolean overlayApplied) {
         this.dockApps = Collections.unmodifiableList(dockApps);
         this.hiddenApps = Collections.unmodifiableList(hiddenApps);
         this.liveTvPackage = liveTvPackage;
@@ -75,6 +79,8 @@ final class Config {
         this.showHomeSettingsShortcut = showHomeSettingsShortcut;
         this.backgroundColor = backgroundColor;
         this.wallpaper = wallpaper;
+        this.jellyfinUrl = jellyfinUrl;
+        this.jellyfinApiKey = jellyfinApiKey;
         this.overlayApplied = overlayApplied;
     }
 
@@ -99,6 +105,8 @@ final class Config {
         boolean reducedMotion = res.getBoolean(R.bool.reduced_motion);
         String vpn = res.getString(R.string.vpn_app).trim();
         boolean homeSettings = res.getBoolean(R.bool.show_home_settings_shortcut);
+        String jellyfinUrl = res.getString(R.string.jellyfin_url).trim();
+        String jellyfinApiKey = res.getString(R.string.jellyfin_api_key).trim();
         int background = 0xFF000000;
         boolean applied = false;
 
@@ -122,6 +130,8 @@ final class Config {
             vpn = string(json, "vpn_app", vpn);
             homeSettings = bool(json, "show_home_settings_shortcut", homeSettings);
             background = color(json, "background_color", background);
+            jellyfinUrl = string(json, "jellyfin_url", jellyfinUrl);
+            jellyfinApiKey = string(json, "jellyfin_api_key", jellyfinApiKey);
         }
         File wallpaper = dir != null ? new File(dir, WALLPAPER_NAME) : null;
         if (wallpaper != null && !(wallpaper.isFile() && wallpaper.length() > 0)) wallpaper = null;
@@ -130,7 +140,7 @@ final class Config {
 
         return new Config(dock, hidden, liveTv, liveTvAction, panelService, panelAction, inputAction,
                 Math.max(1, columns), Math.max(0, rowsBelow), shamsi, moduleCards, reducedMotion,
-                vpn, homeSettings, background, wallpaper, applied);
+                vpn, homeSettings, background, wallpaper, jellyfinUrl, jellyfinApiKey, applied);
     }
 
     /** Reads and parses the overlay; any problem means "no overlay", never a crash on the home screen. */
@@ -145,7 +155,7 @@ final class Config {
             int n = 0, r;
             while (n < buf.length && (r = in.read(buf, n, buf.length - n)) > 0) n += r;
             String text = new String(buf, 0, n, StandardCharsets.UTF_8);
-            if (text.startsWith("﻿")) text = text.substring(1);   // Windows editors add a BOM
+            if (text.startsWith("\ufeff")) text = text.substring(1);   // Windows editors add a BOM
             return new JSONObject(text);
         } catch (Exception e) {
             Log.w(TAG, "ignoring " + file + ": " + e.getMessage());

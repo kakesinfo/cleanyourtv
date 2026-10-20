@@ -5,12 +5,22 @@
     android:layout_height="match_parent"
     android:background="#FF000000">
 
-    <!-- Ambient glow in the colour of the focused dock app. -->
-    <View
-        android:id="@+id/ambient"
+    <!-- Jellyfin backdrop carousel (two layers for smooth crossfading). -->
+    <ImageView
+        android:id="@+id/backdropA"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:alpha="0" />
+        android:scaleType="centerCrop"
+        android:alpha="0"
+        android:importantForAccessibility="no" />
+
+    <ImageView
+        android:id="@+id/backdropB"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:alpha="0"
+        android:importantForAccessibility="no" />
 
     <!-- Top shelf: hidden per user preference (no title on hover). -->
     <TextView

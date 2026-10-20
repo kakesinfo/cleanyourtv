@@ -9,14 +9,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.RadialGradient;
 import android.graphics.Rect;
-import android.graphics.Shader;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
@@ -76,10 +70,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RecyclerView grid;
     private FrameLayout root;
     private GlassView glass;
-    private View ambient;
+    private JellyfinCarousel jellyfinCarousel;
     private TextView heroName;
-    private int ambientColor = -1;
-    private boolean heroShown;
     private TextView greeting;
     private View btnInputs;
     private TextView btnOtherApps;
@@ -164,7 +156,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         root.setBackgroundColor(cfg.backgroundColor);
         if (cfg.wallpaper != null) showWallpaper(cfg.wallpaper);
         glass = findViewById(R.id.glass);
-        ambient = findViewById(R.id.ambient);
+        ImageView backdropA = findViewById(R.id.backdropA);
+        ImageView backdropB = findViewById(R.id.backdropB);
+        jellyfinCarousel = new JellyfinCarousel(this, backdropA, backdropB);
+        jellyfinCarousel.configure(cfg.jellyfinUrl, cfg.jellyfinApiKey, reducedMotion);
         heroName = findViewById(R.id.heroName);
         greeting = findViewById(R.id.greeting);
         btnOtherApps = findViewById(R.id.btnOtherApps);
@@ -411,6 +406,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        Config cfg = Config.load(this);
+        jellyfinCarousel.configure(cfg.jellyfinUrl, cfg.jellyfinApiKey, cfg.reducedMotion);
+        jellyfinCarousel.start();
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
         adapter.setShowingOtherApps(false);
         updateOtherAppsButton();
@@ -430,6 +428,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             registerReceiver(packageReceiver, packageFilter);
         }
+        Config cfg = Config.load(this);
+        jellyfinCarousel.configure(cfg.jellyfinUrl, cfg.jellyfinApiKey, cfg.reducedMotion);
+        jellyfinCarousel.start();
         tilesReady = false;
         promptsPaused = false;
         reloadApps(true);
@@ -447,9 +448,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (restoreFocus) {
             glassShown = false;
             glass.setAlpha(0f);
-            heroShown = false;
             heroName.setAlpha(0f);
-            ambient.setAlpha(0f);
         }
         reloadTiles();
         if (animate && !reducedMotion) grid.scheduleLayoutAnimation();
@@ -515,6 +514,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onPause();
         unregisterReceiver(packageReceiver);
         handler.removeCallbacks(minuteTick);
+        jellyfinCarousel.stop();
         // Nothing of ours stays on screen over another app; an undecided prompt simply returns next time.
         if (cardPrompt != null) cardPrompt.dismiss();
         if (openPopup != null) openPopup.dismiss();
@@ -581,7 +581,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         View item = (View) card.getParent();
         if (position < adapter.dockCount()) {
-            // Dock: park it at the bottom of the screen and show the ambient glow for this app.
+            // Dock: park it at the bottom of the screen.
             int decoratedTop = item.getTop() - (int) (6 * density);
             int dy = decoratedTop - grid.getPaddingTop();
             // A 1px mismatch used to start a scroll on every dock move. Only scroll when the row is
@@ -603,61 +603,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     // ---- top shelf -------------------------------------------------------------------------------
 
     private void showHero(int position, float dockTopInRoot) {
-        int color = adapter.ambientColorAt(position);
         heroName.setVisibility(View.GONE);
-
-        if (reducedMotion) {
-            setAmbient(color);
-            if (!heroShown) {
-                ambient.setAlpha(0f);
-                ambient.animate().alpha(1f).setDuration(160).start();
-                heroShown = true;
-            }
-            return;
-        }
-
-        if (!heroShown) {
-            setAmbient(color);
-            ambient.animate().alpha(1f).setDuration(600).start();
-            heroShown = true;
-        } else if (color != ambientColor) {
-            ambient.animate().alpha(0.35f).setDuration(200).withEndAction(() -> {
-                setAmbient(color);
-                ambient.animate().alpha(1f).setDuration(500).start();
-            }).start();
-        }
-    }
-
-    /**
-     * The glow used to be a full-screen radial GradientDrawable. On Android 10 that drawable is
-     * drawn on the CPU, so fading it for half a second redrew 1920×1080 every frame and the
-     * highlight looked like it was running at a few frames per second. A small bitmap stretched
-     * over the screen is one texture; changing apps only uploads it once.
-     */
-    private void setAmbient(int color) {
-        if (color == ambientColor && ambient.getBackground() != null) return;
-        ambientColor = color;
-        int c = color & 0x00FFFFFF;
-        int w = 480;
-        int h = 270;
-        Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bmp);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setShader(new RadialGradient(
-                w * 0.32f, h * 0.42f, w * 0.62f,
-                new int[]{0x5C000000 | c, 0x26000000 | c, 0x00000000 | c},
-                new float[]{0f, 0.45f, 1f},
-                Shader.TileMode.CLAMP));
-        canvas.drawRect(0, 0, w, h, paint);
-        BitmapDrawable drawable = new BitmapDrawable(getResources(), bmp);
-        drawable.setGravity(Gravity.FILL);
-        ambient.setBackground(drawable);
     }
 
     private void hideHero() {
-        if (!heroShown) return;
-        heroShown = false;
-        ambient.animate().alpha(0f).setDuration(reducedMotion ? 140 : 300).start();
+        heroName.setVisibility(View.GONE);
     }
 
     private void hideGlass() {
