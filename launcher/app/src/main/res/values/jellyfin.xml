@@ -11,6 +11,6 @@
     <!-- Number of latest movies (sorted by release date, PremiereDate descending) to include in the carousel. -->
     <integer name="jellyfin_movies_count">15</integer>
 
-    <!-- Number of latest series (sorted by release date, PremiereDate descending) to include in the carousel. -->
+    <!-- Number of latest series (sorted by the release date of their latest season) to include in the carousel. -->
     <integer name="jellyfin_series_count">15</integer>
 </resources>

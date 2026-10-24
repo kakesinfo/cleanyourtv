@@ -34,14 +34,16 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Fetches the latest movies and series (sorted by release date, PremiereDate descending)
- * from a Jellyfin server, caches their backdrop images on disk, darkens them with a cinematic vignette
- * for legibility, and crossfades them in the background.
+ * Fetches the latest movies and series from a Jellyfin server, caches their backdrop images on disk,
+ * darkens them with a cinematic vignette for legibility, and crossfades them in the background.
+ * For movies, items are sorted by movie PremiereDate.
+ * For series, items are sorted by the release date of their latest season.
  */
 final class JellyfinCarousel {
     private static final String TAG = "TvHome.Jellyfin";
@@ -239,7 +241,7 @@ final class JellyfinCarousel {
                     ? fetchLatestByReleaseDate(baseUrl, apiKey, null, "Movie", moviesCount)
                     : Collections.emptyList();
             List<BackdropRef> series = seriesCount > 0
-                    ? fetchLatestByReleaseDate(baseUrl, apiKey, null, "Series", seriesCount)
+                    ? fetchLatestSeries(baseUrl, apiKey, null, seriesCount)
                     : Collections.emptyList();
             if (movies.isEmpty() && series.isEmpty()) {
                 String userId = fetchFirstUserId(baseUrl, apiKey);
@@ -248,7 +250,7 @@ final class JellyfinCarousel {
                         movies = fetchLatestByReleaseDate(baseUrl, apiKey, userId, "Movie", moviesCount);
                     }
                     if (seriesCount > 0) {
-                        series = fetchLatestByReleaseDate(baseUrl, apiKey, userId, "Series", seriesCount);
+                        series = fetchLatestSeries(baseUrl, apiKey, userId, seriesCount);
                     }
                 }
             }
@@ -331,6 +333,116 @@ final class JellyfinCarousel {
                 BackdropRef s = series.get(i);
                 if (seenIds.add(s.itemId)) out.add(s);
             }
+        }
+        return out;
+    }
+
+    private static List<BackdropRef> fetchLatestSeries(String baseUrl, String apiKey, String userId, int limit) {
+        List<BackdropRef> series = fetchLatestSeriesByLastSeason(baseUrl, apiKey, userId, limit);
+        if (series.isEmpty()) {
+            series = fetchLatestByReleaseDate(baseUrl, apiKey, userId, "Series", limit);
+        }
+        return series;
+    }
+
+    private static List<BackdropRef> fetchLatestSeriesByLastSeason(String baseUrl, String apiKey, String userId,
+                                                                   int limit) {
+        List<BackdropRef> out = new ArrayList<>();
+        String path = (userId != null && !userId.isEmpty())
+                ? "/Users/" + userId + "/Items"
+                : "/Items";
+        // Query seasons sorted by PremiereDate, DateCreated descending.
+        // We request more seasons than the series limit so we can deduplicate by series.
+        int queryLimit = limit + 5;
+        String query = "?IncludeItemTypes=Season"
+                + "&Recursive=true"
+                + "&SortBy=PremiereDate,DateCreated"
+                + "&SortOrder=Descending"
+                + "&Fields=PremiereDate,BackdropImageTags,ParentBackdropItemId,ParentBackdropImageTags,SeriesId,IndexNumber"
+                + "&Limit=" + queryLimit;
+        try {
+            String body = httpGetString(baseUrl + path + query, apiKey);
+            if (body == null) return out;
+            return parseSeasonItemsJson(body, limit);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed fetching series by season: " + e.getMessage());
+            return out;
+        }
+    }
+
+    static List<BackdropRef> parseSeasonItemsJson(String jsonText, int limit) {
+        List<BackdropRef> out = new ArrayList<>();
+        if (jsonText == null || jsonText.isEmpty()) return out;
+        try {
+            JSONObject root = new JSONObject(jsonText);
+            JSONArray items = root.optJSONArray("Items");
+            if (items == null) return out;
+            Set<String> seenSeries = new HashSet<>();
+            for (int i = 0; i < items.length() && out.size() < limit; i++) {
+                JSONObject item = items.optJSONObject(i);
+                if (item == null) continue;
+
+                // Skip Season 0 / Specials
+                int indexNumber = item.optInt("IndexNumber", 1);
+                if (indexNumber == 0) continue;
+                String name = item.optString("Name", "");
+                if ("Specials".equalsIgnoreCase(name) || "Special".equalsIgnoreCase(name)) continue;
+
+                // Identify the series
+                String seriesId = item.optString("SeriesId", "").trim();
+                if (seriesId.isEmpty()) {
+                    seriesId = item.optString("ParentBackdropItemId", "").trim();
+                }
+                if (seriesId.isEmpty()) {
+                    seriesId = item.optString("SeriesName", "").trim();
+                }
+                if (seriesId.isEmpty()) {
+                    seriesId = item.optString("Id", "").trim();
+                }
+
+                if (seriesId.isEmpty() || seenSeries.contains(seriesId)) {
+                    continue;
+                }
+
+                // Determine backdrop image
+                // 1. Check if season has its own backdrop
+                String backdropItemId = null;
+                String backdropTag = null;
+
+                JSONArray seasonTags = item.optJSONArray("BackdropImageTags");
+                if (seasonTags != null && seasonTags.length() > 0) {
+                    String tag = seasonTags.optString(0, "").trim();
+                    if (!tag.isEmpty()) {
+                        backdropItemId = item.optString("Id", "").trim();
+                        backdropTag = tag;
+                    }
+                }
+
+                // 2. Fall back to parent (Series) backdrop
+                if (backdropTag == null || backdropTag.isEmpty() || backdropItemId == null || backdropItemId.isEmpty()) {
+                    JSONArray parentTags = item.optJSONArray("ParentBackdropImageTags");
+                    if (parentTags != null && parentTags.length() > 0) {
+                        String tag = parentTags.optString(0, "").trim();
+                        if (!tag.isEmpty()) {
+                            String parentId = item.optString("ParentBackdropItemId", "").trim();
+                            if (parentId.isEmpty()) {
+                                parentId = item.optString("SeriesId", "").trim();
+                            }
+                            if (!parentId.isEmpty()) {
+                                backdropItemId = parentId;
+                                backdropTag = tag;
+                            }
+                        }
+                    }
+                }
+
+                if (backdropItemId != null && !backdropItemId.isEmpty()
+                        && backdropTag != null && !backdropTag.isEmpty()) {
+                    seenSeries.add(seriesId);
+                    out.add(new BackdropRef(backdropItemId, backdropTag));
+                }
+            }
+        } catch (Exception ignored) {
         }
         return out;
     }
@@ -568,6 +680,25 @@ final class JellyfinCarousel {
         BackdropRef(String itemId, String tag) {
             this.itemId = itemId;
             this.tag = tag;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            BackdropRef that = (BackdropRef) o;
+            return Objects.equals(itemId, that.itemId)
+                    && Objects.equals(tag, that.tag);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(itemId, tag);
+        }
+
+        @Override
+        public String toString() {
+            return "BackdropRef{" + itemId + ", " + tag + "}";
         }
     }
 }
