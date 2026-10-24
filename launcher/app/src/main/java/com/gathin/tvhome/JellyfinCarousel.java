@@ -265,7 +265,7 @@ final class JellyfinCarousel {
 
             for (int i = 0; i < interleaved.size(); i++) {
                 BackdropRef ref = interleaved.get(i);
-                String fileName = String.format(java.util.Locale.US, "%02d_%s_%s.jpg", i, ref.itemId, ref.tag);
+                String fileName = String.format(java.util.Locale.US, "%02d_%s_%s_4k.jpg", i, ref.itemId, ref.tag);
                 keepNames.add(fileName);
                 File target = new File(dir, fileName);
                 if (!target.isFile() || target.length() == 0) {
@@ -517,7 +517,7 @@ final class JellyfinCarousel {
 
     private static boolean downloadBackdrop(String baseUrl, String apiKey, BackdropRef ref, File target) {
         String url = baseUrl + "/Items/" + ref.itemId + "/Images/Backdrop/0"
-                + "?maxWidth=1920&maxHeight=1080&quality=85&tag=" + ref.tag;
+                + "?maxWidth=3840&maxHeight=2160&quality=92&tag=" + ref.tag;
         HttpURLConnection conn = null;
         File tmp = new File(target.getParentFile(), target.getName() + ".tmp");
         try {
@@ -537,12 +537,19 @@ final class JellyfinCarousel {
                 long total = 0;
                 while ((n = in.read(buf)) > 0) {
                     total += n;
-                    if (total > 8 * 1024 * 1024) return false; // safety cap: 8 MB
+                    if (total > 32 * 1024 * 1024) return false; // safety cap: 32 MB
                     out.write(buf, 0, n);
                 }
             }
+            if (target.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                target.delete();
+            }
             if (tmp.length() > 0 && tmp.renameTo(target)) {
+                Log.i(TAG, "Downloaded 4K backdrop " + target.getName() + " (" + (target.length() / 1024) + " KB)");
                 return true;
+            } else {
+                Log.w(TAG, "Failed to rename tmp (" + tmp.length() + " bytes) to " + target.getName());
             }
         } catch (Exception e) {
             Log.w(TAG, "Backdrop download failed for " + ref.itemId + ": " + e.getMessage());
@@ -623,13 +630,20 @@ final class JellyfinCarousel {
     private Bitmap decodeAndDarken(File file) {
         try {
             DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
-            int targetW = Math.min(1920, Math.max(960, dm.widthPixels));
-            int targetH = Math.min(1080, Math.max(540, dm.heightPixels));
 
             BitmapFactory.Options bounds = new BitmapFactory.Options();
             bounds.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(file.getPath(), bounds);
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+
+            int maxW = 3840;
+            int maxH = 2160;
+            int targetW = Math.min(maxW, Math.max(dm.widthPixels, bounds.outWidth));
+            int targetH = Math.round(targetW * (9f / 16f));
+            if (targetH > maxH) {
+                targetH = maxH;
+                targetW = Math.round(targetH * (16f / 9f));
+            }
 
             int sample = 1;
             while (bounds.outWidth / (sample * 2) >= targetW && bounds.outHeight / (sample * 2) >= targetH) {
