@@ -100,16 +100,8 @@ public class QuickSettingsActivity extends Activity {
                 return true;
             }
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                View current = getCurrentFocus();
-                if (current == null
-                        || current.getId() == R.id.row_picture
-                        || current.getId() == R.id.row_wifi
-                        || current.getId() == R.id.row_settings) {
-                    finishWithSlide();
-                    return true;
-                }
-                // When on right column, let D-pad move focus to the left column
-                return super.dispatchKeyEvent(event);
+                finishWithSlide();
+                return true;
             }
             if (isSettingsKey(event)) {
                 finishWithSlide();

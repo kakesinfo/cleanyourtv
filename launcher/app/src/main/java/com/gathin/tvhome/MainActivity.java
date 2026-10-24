@@ -21,6 +21,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -56,6 +57,7 @@ import java.util.Set;
  * tvOS style home: black, a pinned dock row, an app grid, and one glass highlight that springs between tiles.
  */
 public class MainActivity extends Activity implements AppAdapter.TileListener {
+    private static final String TAG = "TvHome.MainActivity";
 
     /** Tiles per row and dock slots (res/values/config.xml, columns). Set in onCreate. */
     static int COLUMNS = 4;
@@ -312,6 +314,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) tim.registerCallback(inputCallback, handler);
         handleIntentAction(getIntent());
+        ensureAccessibilityServicesEnabled();
     }
 
     private void switchTab(boolean showOther) {
@@ -637,9 +640,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Horizontal: swallow the key at a row's ends so focus never wraps to the next row or
         // escapes up into the top bar. Mid-row moves fall through to the default focus search.
         if (position < dockCount) {
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return position == 0;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) return position == dockCount - 1;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return false;          // dock row: let focus move to the top bar
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                if (position > 0) focusTile(position - 1);
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (position < dockCount - 1) focusTile(position + 1);
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                View btnSettings = findViewById(R.id.btnSettings);
+                if (btnInputs != null && btnInputs.getVisibility() == View.VISIBLE) {
+                    if (position >= dockCount - 1 && btnSettings != null && btnSettings.getVisibility() == View.VISIBLE) {
+                        btnSettings.requestFocus();
+                    } else {
+                        btnInputs.requestFocus();
+                    }
+                } else if (btnSettings != null && btnSettings.getVisibility() == View.VISIBLE) {
+                    btnSettings.requestFocus();
+                }
+                return true;
+            }
             if (btnOtherApps != null && btnOtherApps.getVisibility() == View.VISIBLE) {
                 btnOtherApps.requestFocus();
                 return true;
@@ -1163,6 +1184,36 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 return getString(R.string.card_state_new_label);
             default:
                 return getString(R.string.card_state_new);
+        }
+    }
+
+    private void ensureAccessibilityServicesEnabled() {
+        try {
+            android.content.ContentResolver cr = getContentResolver();
+            String enabled = Settings.Secure.getString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            String pkg = getPackageName();
+            String homeSvc = pkg + "/" + HomeKeyService.class.getName();
+            String homeSvcShort = pkg + "/." + HomeKeyService.class.getSimpleName();
+            String inputSvc = pkg + "/" + InputKeyService.class.getName();
+            String inputSvcShort = pkg + "/." + InputKeyService.class.getSimpleName();
+
+            boolean changed = false;
+            String newEnabled = (enabled != null && !enabled.isEmpty() && !"null".equalsIgnoreCase(enabled)) ? enabled : "";
+            if (!newEnabled.contains(homeSvc) && !newEnabled.contains(homeSvcShort)) {
+                newEnabled = newEnabled.isEmpty() ? homeSvc : newEnabled + ":" + homeSvc;
+                changed = true;
+            }
+            if (!newEnabled.contains(inputSvc) && !newEnabled.contains(inputSvcShort)) {
+                newEnabled = newEnabled.isEmpty() ? inputSvc : newEnabled + ":" + inputSvc;
+                changed = true;
+            }
+            if (changed) {
+                Settings.Secure.putString(cr, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, newEnabled);
+                Settings.Secure.putInt(cr, Settings.Secure.ACCESSIBILITY_ENABLED, 1);
+                Log.i(TAG, "Auto-enabled accessibility services: " + newEnabled);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not auto-enable accessibility services: " + e.getMessage());
         }
     }
 }

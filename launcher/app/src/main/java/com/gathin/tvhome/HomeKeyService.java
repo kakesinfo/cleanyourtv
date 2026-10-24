@@ -28,6 +28,7 @@ public class HomeKeyService extends AccessibilityService {
         @Override
         public void run() {
             homeLongPressTriggered = true;
+            Log.i(TAG, "Home long-press detected, opening Quick Settings");
             openQuickSettingsPanel();
         }
     };
@@ -36,14 +37,7 @@ public class HomeKeyService extends AccessibilityService {
     protected void onServiceConnected() {
         super.onServiceConnected();
         settingsScancodes = getResources().getIntArray(R.array.settings_key_scancodes);
-        Log.i(TAG, "HomeKeyService connected, ensuring clean home is displayed");
-        openHome();
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                openHome();
-            }
-        }, 1000);
+        Log.i(TAG, "HomeKeyService connected");
     }
 
     private boolean isSettingsKey(KeyEvent event) {
@@ -90,12 +84,13 @@ public class HomeKeyService extends AccessibilityService {
     private void openQuickSettingsPanel() {
         Intent panel = new Intent(this, QuickSettingsActivity.class)
                 .setAction("com.gathin.tvhome.action.QUICK_SETTINGS")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(panel);
     }
 
     private void openHome() {
         Intent home = new Intent(this, MainActivity.class)
+                .addCategory(Intent.CATEGORY_HOME)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(home);
     }
@@ -103,14 +98,15 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
         int eventType = event.getEventType();
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                || eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             CharSequence pkg = event.getPackageName();
             CharSequence cls = event.getClassName();
             if (pkg != null && "com.google.android.apps.tv.launcherx".contentEquals(pkg)) {
-                // If stock HomeActivity or any other launcherx activity appears, redirect
-                Log.i(TAG, "Stock Google TV home activity detected (" + cls + "), redirecting to clean home");
-                openHome();
+                // If stock HomeActivity appears, redirect to tvhome
+                if (cls != null && cls.toString().contains("HomeActivity")) {
+                    Log.i(TAG, "Stock Google TV HomeActivity detected, redirecting to clean home");
+                    openHome();
+                }
             }
         }
     }
