@@ -1,49 +1,74 @@
 package com.gathin.tvhome;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.os.Bundle;
-import android.provider.Settings;
+import android.util.Log;
+import android.view.KeyEvent;
 import android.view.View;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
 
 /**
- * The panel the remote's Settings button opens when {@code settings_key_panel} is on (HomeKeyService):
- * a few glass rows under the Settings pill, over Home or whatever app is playing. Translucent and in a
- * task of its own, so the app behind keeps running and Back returns to it. Pressing Settings again
- * closes the panel.
+ * Translucent lateral right-side Quick Settings panel.
+ * Designed to overlay seamlessly on top of any running application or the launcher.
  */
-public final class QuickSettingsActivity extends Activity {
+public class QuickSettingsActivity extends Activity {
+    private static final String TAG = "QuickSettingsActivity";
+    private int[] settingsScancodes = new int[0];
 
     @Override
-    protected void onCreate(Bundle state) {
-        super.onCreate(state);
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_quick_settings);
-        findViewById(R.id.scrim).setOnClickListener(v -> finish());
-        LinearLayout rows = findViewById(R.id.rows);
-        addRow(rows, R.drawable.ic_settings, R.string.tv_settings, 0, SystemSettings.intent(this, Settings.ACTION_SETTINGS));
-        addRow(rows, R.drawable.ic_picture, R.string.quick_picture, 0, SystemSettings.intent(this, Settings.ACTION_DISPLAY_SETTINGS));
-        addRow(rows, R.drawable.ic_wifi, R.string.quick_network, 0, SystemSettings.intent(this, Settings.ACTION_WIFI_SETTINGS));
-        addRow(rows, R.drawable.ic_apps, R.string.quick_apps, R.string.quick_apps_hint,
-                SystemSettings.intent(this, Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS));
-        // Through Home, so it rebuilds with the new choices when Launcher settings closes.
-        addRow(rows, R.drawable.ic_home_settings, R.string.launcher_settings, 0,
-                new Intent(this, MainActivity.class).setAction(MainActivity.ACTION_LAUNCHER_SETTINGS));
-        rows.getChildAt(0).requestFocus();
+
+        try {
+            settingsScancodes = getResources().getIntArray(R.array.settings_key_scancodes);
+        } catch (Exception ignored) {
+        }
+
+        View scrim = findViewById(R.id.scrim);
+        if (scrim != null) {
+            scrim.setOnClickListener(v -> finishWithSlide());
+        }
+
+        // 1. Image (Philips lateral picture menu: Dolby Vision, HDR, picture styles, calibration)
+        setupRow(findViewById(R.id.row_picture), () -> {
+            launchSettingIntent("android.settings.PICTURE_ACTIVITY");
+        });
+
+        // 2. Sortie Audio (Philips lateral audio menu: eARC, haut-parleurs, format numérique)
+        setupRow(findViewById(R.id.row_audio), () -> {
+            launchSettingIntent("android.settings.AUDIO_OUTPUT_SETTINGS");
+        });
+
+        // 3. Wifi
+        setupRow(findViewById(R.id.row_wifi), () -> {
+            launchSettingIntent("android.settings.WIFI_SETTINGS");
+        });
+
+        // 4. Bluetooth (List of paired devices, accessories & remote settings)
+        setupRow(findViewById(R.id.row_bluetooth), () -> {
+            Intent btIntent = new Intent("android.settings.SLICE_SETTINGS")
+                    .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/general");
+            launchSettingIntent(btIntent);
+        });
+
+        // 5. Paramètres globaux
+        setupRow(findViewById(R.id.row_settings), () -> {
+            launchSettingIntent("android.settings.SETTINGS");
+        });
+
+        View firstRow = findViewById(R.id.row_picture);
+        if (firstRow != null) {
+            firstRow.requestFocus();
+        }
     }
 
-    /** Settings pressed again while the panel is up. */
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        finish();
+        finishWithSlide();
     }
 
-    /** Anything else taking the screen (Home, an app, a screensaver) closes the panel. */
     @Override
     protected void onPause() {
         super.onPause();
@@ -51,22 +76,61 @@ public final class QuickSettingsActivity extends Activity {
         overridePendingTransition(0, 0);
     }
 
-    private void addRow(LinearLayout rows, int icon, int title, int status, Intent target) {
-        View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
-        ((ImageView) row.findViewById(R.id.icon)).setImageResource(icon);
-        ((TextView) row.findViewById(R.id.title)).setText(title);
-        row.findViewById(R.id.dot).setVisibility(View.GONE);
-        TextView hint = row.findViewById(R.id.status);
-        if (status != 0) hint.setText(status);
-        else hint.setVisibility(View.GONE);
-        row.setOnClickListener(v -> {
-            try {
-                startActivity(target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (ActivityNotFoundException | SecurityException e) {
-                Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
+    private void setupRow(View row, Runnable action) {
+        if (row == null) return;
+        row.setOnClickListener(v -> action.run());
+    }
+
+    private void launchSettingIntent(String action) {
+        launchSettingIntent(new Intent(action));
+    }
+
+    private void launchSettingIntent(Intent intent) {
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Could not launch setting intent: " + intent, e);
+        }
+        finish();
+        overridePendingTransition(0, 0);
+    }
+
+    private boolean isSettingsKey(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_SETTINGS) return true;
+        for (int code : settingsScancodes) {
+            if (event.getScanCode() == code) return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            int keyCode = event.getKeyCode();
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                finishWithSlide();
+                return true;
             }
-            finish();
-        });
-        rows.addView(row);
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                finishWithSlide();
+                return true;
+            }
+            if (isSettingsKey(event)) {
+                finishWithSlide();
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        finishWithSlide();
+    }
+
+    private void finishWithSlide() {
+        finish();
+        overridePendingTransition(0, R.anim.slide_out_right);
     }
 }

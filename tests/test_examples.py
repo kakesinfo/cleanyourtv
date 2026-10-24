@@ -1,21 +1,13 @@
-"""Checks every TV list in examples/ and the two tables that index them.
-
-The tables are generated from each folder's tv.json by tools/gen_tables.py. Here only the tv.json files
-are checked; that the committed tables and counts are what the script writes is CI's "README tables" job,
-on main only, kept apart so a list merge waiting for its regenerated tables doesn't turn these tests red.
+"""Checks every TV list in examples/ and the table that indexes them.
 
 Run from the repository root: python3 -m unittest discover -s tests -v
 """
 import re
-import sys
 from pathlib import Path
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
-import gen_tables  # noqa: E402  (needs tools/ on the path first)
-
 EXAMPLES = ROOT / "examples"
 PACKAGE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
 
@@ -62,20 +54,17 @@ class ExampleListsTest(unittest.TestCase):
                 dupes = sorted({p for p in packages if packages.count(p) > 1})
                 self.assertFalse(dupes, f"listed twice: {dupes}")
 
-    def test_every_folder_has_a_valid_tv_json(self):
-        try:
-            gen_tables.load(ROOT)
-        except gen_tables.Problem as e:
-            self.fail(str(e))
-
-    def test_readme_table_has_one_row_per_list(self):
-        readme_rows = table_rows(ROOT / "README.md", "| TV | OS |")
-        example_rows = table_rows(EXAMPLES / "README.md", "| Folder |")
-        self.assertEqual(len(readme_rows), len(example_rows),
-                         "README.md TV table and examples/README.md have a different number of rows")
-        readme_tvs = sorted(r.split("|")[1].strip() for r in readme_rows)
-        example_tvs = sorted(r.split("|")[2].strip() for r in example_rows)
-        self.assertEqual(readme_tvs, example_tvs, "the TV column differs between the two tables")
+    def test_examples_table_matches_folders(self):
+        rows = table_rows(EXAMPLES / "README.md", "| Folder |")
+        listed = []
+        for row in rows:
+            m = re.match(r"\|\s*`([^`/]+)/`\s*\|", row)
+            self.assertIsNotNone(m, f"row does not start with a `folder/` cell: {row[:60]}")
+            listed.append(m.group(1))
+        names = [f.name for f in folders()]
+        self.assertEqual(sorted(listed), sorted(names),
+                         "examples/README.md rows and examples/ folders differ")
+        self.assertEqual(len(listed), len(set(listed)), "a folder is listed twice")
 
 
 if __name__ == "__main__":

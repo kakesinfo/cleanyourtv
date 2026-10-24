@@ -27,13 +27,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The launcher's settings: the values in res/values/config.xml, with an optional overlay read from
- * {@code config.json} in the app's external files directory
- * ({@code /sdcard/Android/data/com.gathin.tvhome/files/}). Every key in the JSON is optional and an
- * unknown or badly typed key is ignored, so a theme can change the dock and the look without a rebuild:
- * {@code tools/theme.sh themes/<name>} pushes a theme folder there and restarts Home.
- *
- * Read once in {@link MainActivity#onCreate}; nothing here touches the network.
+ * The launcher's settings: the values in res/values/config.xml and res/values/jellyfin.xml (plus
+ * credentials injected from .env at build time), with an optional overlay read from {@code config.json}
+ * in the app's external files directory ({@code /sdcard/Android/data/com.gathin.tvhome/files/}).
  */
 final class Config {
     private static final String TAG = "TvHome.Config";
@@ -162,6 +158,16 @@ final class Config {
     final boolean wallpaperEnabled;
     /** Full-screen picture behind the launcher, or null for the plain colour. */
     final File wallpaper;
+    /** Jellyfin server URL injected from .env (JELLYFIN_URL) or config.json. */
+    final String jellyfinUrl;
+    /** Jellyfin API key injected from .env (JELLYFIN_API_KEY) or config.json. */
+    final String jellyfinApiKey;
+    /** Rotation interval in seconds between two backdrops (res/values/jellyfin.xml). */
+    final int jellyfinCarouselIntervalSeconds;
+    /** Number of recent movies to fetch from Jellyfin (res/values/jellyfin.xml). */
+    final int jellyfinMoviesCount;
+    /** Number of recent series to fetch from Jellyfin (res/values/jellyfin.xml). */
+    final int jellyfinSeriesCount;
     /** Rotating theme images, or the single wallpaper when no collection is configured. */
     final List<File> wallpapers;
     final int wallpaperRotationMinutes;
@@ -244,7 +250,9 @@ final class Config {
                    String inputUriScheme, int columns, int rowsBelowDock, boolean animations, boolean advancedEffects,
                    boolean shamsiDate, String greetingName, boolean moduleCards, boolean reducedMotion, boolean bootToLiveTv, boolean openOnStartChoice, boolean dockTitle, boolean dockRow, boolean topMenu, boolean launcherSettingsButton, boolean reorderButton, boolean showNetworkPill, boolean showInputsPill, boolean iconOnlyButtons, boolean iconOnlyInputs, boolean libraryButton, int wifiLabelWidth, boolean alwaysShowNames, boolean wallpaperTrueColor, boolean focusOvershoot, String vpnApp,
                    boolean showHomeSettingsShortcut, boolean showStats, boolean appLibrary, boolean appLibrarySelection, boolean uniformTiles, int backgroundColor, int skyIntensity,
-                   int[] settingsKeycodes, boolean settingsKeyPanel, boolean restoreKeyServices, boolean wallpaperEnabled, File wallpaper, List<File> wallpapers,
+                   int[] settingsKeycodes, boolean settingsKeyPanel, boolean restoreKeyServices, boolean wallpaperEnabled, File wallpaper,
+                   String jellyfinUrl, String jellyfinApiKey, int jellyfinCarouselIntervalSeconds, int jellyfinMoviesCount, int jellyfinSeriesCount,
+                   List<File> wallpapers,
                    int wallpaperRotationMinutes, int wallpaperDim, int dockOpacity, String wallpaperOrder, boolean overlayApplied,
                    Festival festival, int[] inputKeycodes, List<String> appKeys, String stockHomeRedirect,
                    List<RaceWeekend.Race> raceCalendar, boolean cinematicHome, boolean ambientGlow, boolean appGlow, boolean fadeRows, int homeIdleClockMinutes,
@@ -312,6 +320,11 @@ final class Config {
         this.restoreKeyServices = restoreKeyServices;
         this.wallpaperEnabled = wallpaperEnabled;
         this.wallpaper = wallpaper;
+        this.jellyfinUrl = jellyfinUrl;
+        this.jellyfinApiKey = jellyfinApiKey;
+        this.jellyfinCarouselIntervalSeconds = jellyfinCarouselIntervalSeconds;
+        this.jellyfinMoviesCount = jellyfinMoviesCount;
+        this.jellyfinSeriesCount = jellyfinSeriesCount;
         this.wallpapers = Collections.unmodifiableList(wallpapers);
         this.wallpaperRotationMinutes = wallpaperRotationMinutes;
         this.wallpaperDim = wallpaperDim;
@@ -415,6 +428,11 @@ final class Config {
         boolean tileMenu = res.getBoolean(R.bool.tile_menu);
         String vpn = res.getString(R.string.vpn_app).trim();
         boolean homeSettings = res.getBoolean(R.bool.show_home_settings_shortcut);
+        String jellyfinUrl = res.getString(R.string.jellyfin_url).trim();
+        String jellyfinApiKey = res.getString(R.string.jellyfin_api_key).trim();
+        int carouselInterval = res.getInteger(R.integer.jellyfin_carousel_interval_seconds);
+        int moviesCount = res.getInteger(R.integer.jellyfin_movies_count);
+        int seriesCount = res.getInteger(R.integer.jellyfin_series_count);
         boolean showStats = res.getBoolean(R.bool.show_stats);
         boolean library = res.getBoolean(R.bool.app_library);
         boolean librarySelection = res.getBoolean(R.bool.app_library_selection);
@@ -514,6 +532,11 @@ final class Config {
             librarySelection = bool(json, "app_library_selection", librarySelection);
             uniformTiles = bool(json, "uniform_tiles", uniformTiles);
             background = color(json, "background_color", background);
+            jellyfinUrl = string(json, "jellyfin_url", jellyfinUrl);
+            jellyfinApiKey = string(json, "jellyfin_api_key", jellyfinApiKey);
+            carouselInterval = integer(json, "jellyfin_carousel_interval_seconds", carouselInterval, 2, 300);
+            moviesCount = integer(json, "jellyfin_movies_count", moviesCount, 0, 50);
+            seriesCount = integer(json, "jellyfin_series_count", seriesCount, 0, 50);
             skyIntensity = integer(json, "sky_intensity", skyIntensity, 0, 100);
             settingsKeycodes = intArray(json, "settings_key_keycodes", settingsKeycodes);
             settingsKeyPanel = bool(json, "settings_key_panel", settingsKeyPanel);
@@ -554,30 +577,25 @@ final class Config {
         // A top-bar app is moved there, not copied: it leaves the grid.
         for (String pkg : topBarApps) if (!hidden.contains(pkg)) hidden.add(pkg);
         // A theme push or reset invalidates choices made on the TV. On first use, remember the
-        // current theme without clearing choices from an older launcher version.
+        // current signature without clearing anything so an upgrade does not wipe choices.
         SharedPreferences choices = ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE);
-        // Unmounted storage looks like a theme reset; compare only once the file is readable.
-        if (mounted) syncThemeChoices(choices, dir, file);
-        int chosenColumns = choices.getInt("columns", columns);
-        if (chosenColumns >= 4 && chosenColumns <= 7) columns = chosenColumns;
-        int chosenRows = choices.getInt(ROWS_BELOW_DOCK_KEY, rowsBelow);
-        if (chosenRows >= 0 && chosenRows <= 3) rowsBelow = chosenRows;
+        syncThemeChoices(choices, dir, file);
+        // On-TV choices in Launcher settings override both config.xml and the pushed theme.
+        columns = choices.getInt("columns", columns);
         animations = choices.getBoolean("animations", animations);
         advancedEffects = choices.getBoolean("advanced_effects", advancedEffects);
-        File wallpaper = dir != null ? new File(dir, WALLPAPER_NAME) : null;
+        rowsBelow = choices.getInt(ROWS_BELOW_DOCK_KEY, rowsBelow);
+        boolean wallpaperEnabled = json == null || !json.has("wallpaper") || bool(json, "wallpaper", true);
+        File wallpaper = dir != null && wallpaperEnabled ? new File(dir, WALLPAPER_NAME) : null;
         if (wallpaper != null && !(wallpaper.isFile() && wallpaper.length() > 0)) wallpaper = null;
-        // A theme can also switch the wallpaper off while the file is still there.
-        boolean wallpaperEnabled = json == null || bool(json, "wallpaper", true);
-        if (!wallpaperEnabled) wallpaper = null;
+        List<File> wallpapers = new ArrayList<>();
         int rotationMinutes = json == null ? 0 : integer(json, "wallpaper_rotation_minutes", 0, 0, 1440);
         int wallpaperDim = json == null ? 0 : integer(json, "wallpaper_dim", 0, 0, 90);
         int dockOpacity = json == null ? 100 : integer(json, "dock_opacity", 100, 30, 100);
-        dockOpacity = chosenDockOpacity(choices.getInt(DOCK_OPACITY_KEY, -1), dockOpacity);
         String wallpaperOrder = json == null ? WallpaperRotation.ORDER_SHUFFLE
                 : string(json, "wallpaper_order", WallpaperRotation.ORDER_SHUFFLE);
-        // An unknown order must not silently change how an existing collection rotates.
         if (!WallpaperRotation.validOrder(wallpaperOrder)) wallpaperOrder = WallpaperRotation.ORDER_SHUFFLE;
-        List<File> wallpapers = new ArrayList<>();
+        dockOpacity = chosenDockOpacity(choices.getInt(DOCK_OPACITY_KEY, -1), dockOpacity);
         if (rotationMinutes > 0 && dir != null && wallpaperEnabled) {
             wallpapers.addAll(WallpaperRotation.images(new File(dir, "wallpapers")));
         }
@@ -603,6 +621,7 @@ final class Config {
                 Math.max(1, columns), Math.max(0, rowsBelow), animations, advancedEffects,
                 shamsi, greetingName, moduleCards, reducedMotion, bootToLiveTv, openOnStartChoice, dockTitle, dockRow, topMenu, launcherSettingsButton, reorderButton, showNetworkPill, showInputsPill, iconOnlyButtons, iconOnlyInputs, libraryButton, wifiLabelWidth, alwaysShowNames, wallpaperTrueColor, focusOvershoot, vpn, homeSettings, showStats, library, librarySelection, uniformTiles, background,
                 Math.max(0, Math.min(100, skyIntensity)), settingsKeycodes, settingsKeyPanel, restoreKeyServices, wallpaperEnabled, wallpaper,
+                jellyfinUrl, jellyfinApiKey, Math.max(2, carouselInterval), Math.max(0, moviesCount), Math.max(0, seriesCount),
                 wallpapers, rotationMinutes, wallpaperDim, dockOpacity, wallpaperOrder, applied,
                 festival, inputKeycodes, appKeys, stockHomeRedirect, json == null ? Collections.emptyList() : raceCalendar(json), cinematic, ambientGlow, appGlow, fadeRows,
                 Math.max(0, idleClockMinutes), keyFilter, dockGlass, glowStyle, wallpaperCaptions, handleViewInputs, tileMenu, dockEvenPadding, cinematicDots, cinematicWhiteFocus, wifiStatusColor, cinematicScrim, cinematicArt, wallpaperMoods, gamepadPassthrough, consumeVolumeKeys, wifiStatusWarnings, topBarApps, showGreeting, headerWhite, clockWallpaper, Math.max(0, Math.min(90, clockWallpaperDim)), clockGlow, glassStyle, singleRow && dockRow, dockBandAll, lunar, lunarOffset);
@@ -671,8 +690,9 @@ final class Config {
         if (file == null || !file.isFile() || file.length() > 64) return "absent";
         try (InputStream in = new FileInputStream(file)) {
             byte[] bytes = new byte[(int) file.length()];
-            int n = in.read(bytes);
-            return n > 0 ? new String(bytes, 0, n, StandardCharsets.US_ASCII) : "absent";
+            int n = int.class.cast(file.length()); // safe cast for small files
+            int r = in.read(bytes);
+            return r > 0 ? new String(bytes, 0, r, StandardCharsets.US_ASCII) : "absent";
         } catch (Exception ignored) {
             return "absent";
         }

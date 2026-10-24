@@ -10,7 +10,7 @@ import android.util.AttributeSet;
 import android.view.View;
 
 /**
- * A translucent glass slab: soft sheen fill, bright top specular, crisp rim and a faint outer glow.
+ * A subtle translucent glass frame: discreet rim, soft top sheen and a faint outer glow.
  * One instance floats over the grid and is moved with spring animations between tiles.
  */
 public class GlassView extends View {
@@ -35,8 +35,8 @@ public class GlassView extends View {
         density = getResources().getDisplayMetrics().density;
         radius = 20f * density;
         rim.setStyle(Paint.Style.STROKE);
-        rim.setStrokeWidth(1.5f * density);
-        rim.setColor(0xCCFFFFFF);
+        rim.setStrokeWidth(1.2f * density);
+        rim.setColor(0x66FFFFFF);
         glow.setStyle(Paint.Style.STROKE);
         // Cache the slab as a texture. The spring only changes translation, so the GPU can
         // move it without replaying clipPath and the glow on every frame. That path is
@@ -77,8 +77,8 @@ public class GlassView extends View {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        fill.setShader(new LinearGradient(0, 0, 0, h, 0x3DFFFFFF, 0x12FFFFFF, Shader.TileMode.CLAMP));
-        specular.setShader(new LinearGradient(0, 0, 0, h * 0.45f, 0x66FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+        fill.setShader(new LinearGradient(0, 0, 0, h, 0x10FFFFFF, 0x03FFFFFF, Shader.TileMode.CLAMP));
+        specular.setShader(new LinearGradient(0, 0, 0, h * 0.45f, 0x1CFFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
     }
 
     @Override
@@ -86,21 +86,15 @@ public class GlassView extends View {
         float inset = 6f * density;   // room for the glow
         rect.set(inset, inset, getWidth() - inset, getHeight() - inset);
 
-        // Outer glow: thin rings across the inset, each a little fainter, so it fades out smoothly. Three wide
-        // strokes left visible bands once the glow took an app's colour at a stronger alpha. The hardware layer
-        // caches the result, so the rings cost one draw, not one per frame of the spring.
-        if (!flat || halo) {
-            int rings = 12;
-            float step = inset / rings;
-            int alpha = flat ? glowAlpha / 2 : glowAlpha;
-            glow.setStrokeWidth(step + 0.5f);
-            for (int i = 0; i < rings; i++) {
-                float o = step * (i + 0.5f);
-                float t = 1f - (float) i / rings;
-                glow.setColor(Math.round(alpha * t) << 24 | glowRgb);
-                canvas.drawRoundRect(rect.left - o, rect.top - o, rect.right + o, rect.bottom + o, radius + o, radius + o, glow);
-            }
+        // Outer glow: three widening, fading strokes. The hardware layer caches the result, so
+        // they cost one draw, not one per frame of the spring.
+        for (int i = 1; i <= 3; i++) {
+            glow.setStrokeWidth(i * 1.8f * density);
+            glow.setColor((0x14 / i) << 24 | 0xFFFFFF);
+            float o = i * density;
+            canvas.drawRoundRect(rect.left - o, rect.top - o, rect.right + o, rect.bottom + o, radius + o, radius + o, glow);
         }
+
         if (flat) {
             canvas.drawRoundRect(rect, radius, radius, rim);
             return;
@@ -108,8 +102,8 @@ public class GlassView extends View {
 
         canvas.drawRoundRect(rect, radius, radius, fill);
 
-        // Sheen across the top 45%: clipRect stays on the GPU (clipPath did not on the MT5895) and
-        // the round rect under it keeps the top corners rounded with a flat bottom edge.
+        // Subtle sheen across the top 45%: clipRect stays on the GPU (clipPath did not on the MT5895)
+        // and the round rect under it keeps the top corners rounded with a flat bottom edge.
         canvas.save();
         canvas.clipRect(rect.left, rect.top, rect.right, rect.top + rect.height() * 0.45f);
         canvas.drawRoundRect(rect, radius, radius, specular);

@@ -5,6 +5,8 @@ launcher/.gradle/
 launcher/build/
 launcher/app/build/
 launcher/local.properties
+.env
+launcher/.env
 # your own TV's dumps (serial, android_id, device names) stay local
 backup/
 # session screenshots and working notes (may show the Wi-Fi name or account avatar) stay local
@@ -14,6 +16,10 @@ work/
 traces/
 .DS_Store
 
+.idea
+.gemini
+.agents
+skills/
 # Generated install bundles and JVM crash reports stay out of contributions.
 *.apk
 *.aab

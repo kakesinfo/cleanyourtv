@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Jellyfin backdrop carousel configuration (non-sensitive parameters).
+  Server URL and API key are loaded at build time from launcher/.env (JELLYFIN_URL and JELLYFIN_API_KEY)
+  so credentials are never committed to Git.
+-->
+<resources>
+    <!-- Time in seconds each backdrop stays on screen before crossfading to the next one. -->
+    <integer name="jellyfin_carousel_interval_seconds">10</integer>
+
+    <!-- Number of latest movies (sorted by release date, PremiereDate descending) to include in the carousel. -->
+    <integer name="jellyfin_movies_count">15</integer>
+
+    <!-- Number of latest series (sorted by the release date of their latest season) to include in the carousel. -->
+    <integer name="jellyfin_series_count">15</integer>
+</resources>

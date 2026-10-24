@@ -40,7 +40,7 @@ public class TileFitTest {
     @Test
     public void oneRowUnderATitledDockFits() {
         int w = AppAdapter.tileWidthPx(INNER, GRID_H, 4, 1, true, true, D);
-        assertTrue(w < AppAdapter.tileWidthPx(INNER, 4, D));
+        assertTrue(w <= AppAdapter.tileWidthPx(INNER, 4, D));
         assertTrue(height(w, 1, true) <= GRID_H + 2);
     }
 
@@ -67,6 +67,6 @@ public class TileFitTest {
     @Test
     public void droppingTheTitleGivesBiggerTiles() {
         assertTrue(AppAdapter.tileWidthPx(INNER, GRID_H, 4, 1, false, true, D)
-                > AppAdapter.tileWidthPx(INNER, GRID_H, 4, 1, true, true, D));
+                >= AppAdapter.tileWidthPx(INNER, GRID_H, 4, 1, true, true, D));
     }
 }

@@ -46,7 +46,7 @@ public class CardsTest {
         assertNotNull(Cards.checkLabel(null));
         assertNotNull(Cards.checkLabel(""));
         assertNotNull(Cards.checkLabel("1234567890123456789012345"));   // 25
-        assertNotNull(Cards.checkLabel("Netflіx"));                // Cyrillic i look-alike
+        assertNotNull(Cards.checkLabel("Netfl\u0456x"));                // Cyrillic i look-alike
         assertNotNull(Cards.checkLabel("Retro\n"));
         assertNotNull(Cards.checkLabel("Retro\u0000"));
         assertNotNull(Cards.checkLabel("Retro\u202E"));                  // bidi override
@@ -66,7 +66,7 @@ public class CardsTest {
         assertNull(Cards.checkCaption("NES games"));
         assertNull(Cards.checkCaption("12345678901234567890123456789012"));      // 32
         assertNotNull(Cards.checkCaption("123456789012345678901234567890123"));  // 33
-        assertNotNull(Cards.checkCaption("gamesé"));
+        assertNotNull(Cards.checkCaption("games\u00e9"));
         assertNotNull(Cards.checkCaption("NES\tgames"));
         assertNotNull(Cards.checkCaption("NES\u202Egames"));
         assertNotNull(Cards.checkCaption("@2131820545"));
@@ -79,7 +79,7 @@ public class CardsTest {
         assertEquals("tvvibehack", Cards.fold("tv-vibehack"));
         assertEquals("kidstv20", Cards.fold("Kid's TV+ 2.0"));
         assertEquals("", Cards.fold(null));
-        assertEquals("netflx", Cards.fold("Netflіx"));   // non ASCII letters never match anything
+        assertEquals("netflx", Cards.fold("Netfl\u0456x"));   // non ASCII letters never match anything
     }
 
     @Test
@@ -105,7 +105,7 @@ public class CardsTest {
 
     @Test
     public void translatedUiNamesCountToo() {
-        Set<String> ui = new HashSet<>(Arrays.asList(Cards.fold("Einstellungen"), Cards.fold("Eingänge")));
+        Set<String> ui = new HashSet<>(Arrays.asList(Cards.fold("Einstellungen"), Cards.fold("Eing\u00e4nge")));
         assertTrue(Cards.isReserved(Cards.fold("Einstellungen"), ui));
         assertFalse(Cards.isReserved(Cards.fold("Settings panel"), ui));
     }
@@ -545,6 +545,19 @@ public class CardsTest {
         assertFalse(Cards.isFolded("Retro"));
         assertFalse(Cards.isFolded("re tro"));
         assertFalse(Cards.isFolded("abcdefghijklmnopqrstuvwxy"));   // 25
+    }
+
+    @Test
+    public void dockSlotMatchesLabelsPackagesAndAliases() {
+        List<String> dock = Arrays.asList("FreeTV", "Jellyfin", "Plezy", "Spotify", "YouTube");
+        assertEquals(0, AppAdapter.dockSlot("com.freetv.app", "FreeTV", "FreeTV", dock));
+        assertEquals(0, AppAdapter.dockSlot("net.oqee.androidtv", "OQEE by Free", "OQEE by Free", dock));
+        assertEquals(0, AppAdapter.dockSlot("fr.freebox.oqee", "OQEE", "OQEE", dock));
+        assertEquals(1, AppAdapter.dockSlot("org.jellyfin.androidtv", "Jellyfin", "Jellyfin", dock));
+        assertEquals(2, AppAdapter.dockSlot("com.edde746.plezy", "Plezy", "Plezy", dock));
+        assertEquals(3, AppAdapter.dockSlot("com.spotify.tv.android", "Spotify", "Spotify", dock));
+        assertEquals(4, AppAdapter.dockSlot("com.google.android.youtube.tv", "YouTube", "YouTube", dock));
+        assertEquals(-1, AppAdapter.dockSlot("com.netflix.ninja", "Netflix", "Netflix", dock));
     }
 
     private static Map<String, Cards.Record> one(String pkg, String digest, String decision) {

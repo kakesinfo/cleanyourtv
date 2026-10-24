@@ -23,6 +23,14 @@
     <string name="stats_memory">Mémoire %1$d / %2$d Mo</string>
     <string name="stats_storage">Stockage %1$s libre</string>
     <string name="dream_name">Horloge</string>
+    <string name="other_apps">Autres applications</string>
+    <string name="back_to_home">Accueil</string>
+    <string name="quick_settings_title">Réglages rapides</string>
+    <string name="qs_picture_title">Image</string>
+    <string name="qs_audio_title">Sortie Audio</string>
+    <string name="qs_wifi_title">Wifi</string>
+    <string name="qs_bluetooth_title">Bluetooth</string>
+    <string name="qs_settings_title">Paramètres</string>
     <string name="vpn">VPN</string>
     <string name="vpn_off">VPN désactivé</string>
     <string name="home_settings">Accueil par défaut</string>

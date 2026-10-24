@@ -8,13 +8,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.os.UserManager;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityEvent;
@@ -26,19 +27,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Sends the remote's Home button to this launcher on remotes that emit KEYCODE_ALL_APPS for Home
- * (Xiaomi sticks and boxes). Android TV 9 routes that key only to the system-image launcher, so once
- * the stock launcher is disabled the button does nothing. Every other key passes through untouched.
- *
- * With stock_home_redirect set, it also sends the stock launcher's home screen back here, for firmware that turns
- * that launcher on again after it was disabled (XGIMI's xrmservice does, on its own remote keys), or that cannot be
- * disabled at all, and a short press of Home opens this launcher even when the stock home is already on screen.
- *
- * Enable over adb:
- *   settings put secure enabled_accessibility_services com.gathin.tvhome/.HomeKeyService
- *   settings put secure accessibility_enabled 1
+ * Handles remote Home and Quick Settings keys.
+ * Short-press Home -> returns to clean tvhome launcher.
+ * Long-press Home -> opens custom translucent lateral Quick Settings panel over current app.
+ * Quick Settings key -> opens custom translucent lateral Quick Settings panel over current app.
+ * Redirects stock Google TV home screen to tvhome immediately on boot and navigation.
  */
 public class HomeKeyService extends AccessibilityService {
+    private static final String TAG = "HomeKeyService";
 
     /** restore_key_services was on when the config was read: this helper is noted for ServiceRepair. */
     private boolean repairRecord;
@@ -61,10 +57,23 @@ public class HomeKeyService extends AccessibilityService {
     /** Stops key filtering while a game controller is connected; null unless gamepad_passthrough and key_filter, or before the unlock. */
     private GamepadPassthrough gamepads;
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean homeLongPressTriggered = false;
+
+    private final Runnable longPressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            homeLongPressTriggered = true;
+            Log.i(TAG, "Home long-press detected, opening Quick Settings");
+            openQuickSettingsPanel();
+        }
+    };
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         settingsScancodes = getResources().getIntArray(R.array.settings_key_scancodes);
+        Log.i(TAG, "HomeKeyService connected");
         // The service is directBootAware: Android 11 skips a service that is not while the user is still
         // locked at boot, writes accessibility_enabled=0 and, on TCL G03 firmware, never binds it after the
         // unlock. Config.load reads credential-protected storage, so wait for the unlock before reading it.
@@ -99,14 +108,13 @@ public class HomeKeyService extends AccessibilityService {
         stopWaitingForUnlock();
         if (gamepads != null) gamepads.stop();
         if (consumeVolumeKeys) VolumeKeys.stop();
+        handler.removeCallbacks(longPressRunnable);
         super.onDestroy();
     }
 
     private void loadConfig() {
         // Keycodes and the panel choice can also come from a theme; theme.sh restarts this service.
         Config config = Config.load(this);
-        // restore_key_services: note that this helper runs, so Home can put it back after a force stop. Here, not
-        // in onServiceConnected: the note is in credential-protected storage too, readable only after the unlock.
         repairRecord = config.restoreKeyServices;
         if (repairRecord) ServiceRepair.connected(this, getClass());
         settingsKeycodes = config.settingsKeycodes;
@@ -122,16 +130,14 @@ public class HomeKeyService extends AccessibilityService {
                 stockHome.add(ri.activityInfo.name);
             }
         }
-        // home_key_service.xml subscribes to no events, so the redirect asks for window changes only when it is on.
         AccessibilityServiceInfo info = getServiceInfo();
-        if (info != null && !stockHome.isEmpty()) {
+        if (info != null) {
             info.eventTypes |= AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED;
             setServiceInfo(info);
         }
         if (!stockHome.isEmpty()) probeAtBoot();
         holdAppKeys = RemoteKeys.parseHoldAppKeys(config.appKeys);
         holdAppScancodes = RemoteKeys.parseHoldAppScancodes(config.appKeys);
-        // gamepad_passthrough, off by default. Only with key_filter on: off, the service never filters keys.
         if (config.gamepadPassthrough && config.keyFilter && gamepads == null) {
             gamepads = new GamepadPassthrough(this);
             gamepads.start();
@@ -145,40 +151,69 @@ public class HomeKeyService extends AccessibilityService {
         return false;
     }
 
+    private boolean isHomeKey(KeyEvent event) {
+        int code = event.getKeyCode();
+        return code == KeyEvent.KEYCODE_HOME || code == KeyEvent.KEYCODE_ALL_APPS;
+    }
+
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
         if (consumeVolumeKeys && VolumeKeys.handle(this, event)) return true;
-        // A scancode entry is more specific than any keycode, so it goes first.
         if (RemoteKeys.handle(this, event, appScancodes.get(event.getScanCode()),
                 holdAppScancodes.get(event.getScanCode()))) return true;
-        // The stock launcher handled the remote's Settings button; with it disabled the button does nothing.
+
         if (isSettingsKey(event)) {
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
-                Intent open = settingsPanel ? new Intent(this, QuickSettingsActivity.class)
-                        : SystemSettings.intent(this, Settings.ACTION_SETTINGS);
-                try {
-                    startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-                } catch (ActivityNotFoundException | SecurityException unavailable) {
-                    Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
-                }
+                openQuickSettingsPanel();
             }
             return true;
         }
+
         if (RemoteKeys.handle(this, event, appKeys.get(event.getKeyCode()),
                 holdAppKeys.get(event.getKeyCode()))) return true;
-        if (event.getKeyCode() == KeyEvent.KEYCODE_HOME && !stockHome.isEmpty()) {
-            redirectHomeKey(event);
-            return false;
+
+        if (isHomeKey(event)) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (event.getRepeatCount() == 0) {
+                    homeLongPressTriggered = false;
+                    handler.removeCallbacks(longPressRunnable);
+                    handler.postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout());
+                }
+                return true;
+            } else if (event.getAction() == KeyEvent.ACTION_UP) {
+                handler.removeCallbacks(longPressRunnable);
+                if (!homeLongPressTriggered && !event.isCanceled()) {
+                    openHome();
+                }
+                homeLongPressTriggered = false;
+                return true;
+            }
         }
-        if (event.getKeyCode() != KeyEvent.KEYCODE_ALL_APPS) return false;
-        if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
-            Intent home = new Intent(Intent.ACTION_MAIN)
-                    .addCategory(Intent.CATEGORY_HOME)
-                    .setPackage(getPackageName())
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+
+        return false;
+    }
+
+    private void openQuickSettingsPanel() {
+        Intent panel = new Intent(this, QuickSettingsActivity.class)
+                .setAction("com.gathin.tvhome.action.QUICK_SETTINGS")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        try {
+            startActivity(panel);
+        } catch (ActivityNotFoundException | SecurityException unavailable) {
+            Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openHome() {
+        Intent home = new Intent(this, MainActivity.class)
+                .setAction(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_HOME)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        try {
             startActivity(home);
+        } catch (Exception e) {
+            Log.e(TAG, "Could not open home", e);
         }
-        return true;
     }
 
     /** Unbound by Android: the user turned the helper off, so Home doesn't put it back (ServiceRepair). */
@@ -190,10 +225,21 @@ public class HomeKeyService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // stock_home_redirect: the firmware turned the stock launcher back on and its home screen came up.
-        if (stockHome.isEmpty() || event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence cls = event.getClassName();
-        if (cls != null && stockHome.contains(cls.toString())) openHome();
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            CharSequence pkg = event.getPackageName();
+            CharSequence cls = event.getClassName();
+            if (pkg != null && "com.google.android.apps.tv.launcherx".contentEquals(pkg)) {
+                // If stock HomeActivity appears, redirect to tvhome
+                if (cls != null && cls.toString().contains("HomeActivity")) {
+                    Log.i(TAG, "Stock Google TV HomeActivity detected, redirecting to clean home");
+                    openHome();
+                    return;
+                }
+            }
+            if (!stockHome.isEmpty() && cls != null && stockHome.contains(cls.toString())) {
+                openHome();
+            }
+        }
     }
 
     /** How long after boot the first bind still counts as "at boot" for probeAtBoot. */
@@ -219,32 +265,12 @@ public class HomeKeyService extends AccessibilityService {
         return boot >= 0 && boot != lastBoot && uptimeMs < BOOT_WINDOW_MS;
     }
 
-    /** Lets the system see the key, so a long press still does what the firmware gives it. */
-    private static final long HOME_KEY_DELAY_MS = 250;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-
-    /** stock_home_redirect on the Home key: when the stock home is already on screen (it came up at boot, before
-     *  Android bound this service), Home brings it up again with no window change, so the redirect above never
-     *  fires and the TV stays on the stock home until another app opens (#1116). A short press opens this
-     *  launcher shortly after the system has handled the key; a long press (Google TV's quick settings) is left
-     *  alone. Held time, not repeats: key repeats are made after accessibility filtering, so none arrive here. */
-    private void redirectHomeKey(KeyEvent event) {
-        if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()
-                && isShortPress(event.getDownTime(), event.getEventTime(), ViewConfiguration.getLongPressTimeout())) {
-            handler.postDelayed(this::openHome, HOME_KEY_DELAY_MS);
-        }
-    }
-
     static boolean isShortPress(long downTime, long upTime, long longPressTimeout) {
         return upTime - downTime < longPressTimeout;
     }
 
-    private void openHome() {
-        startActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(getPackageName())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED));
-    }
-
     @Override
     public void onInterrupt() {
+        handler.removeCallbacks(longPressRunnable);
     }
 }
